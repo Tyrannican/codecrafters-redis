@@ -7,10 +7,10 @@ pub enum RedisValue {
     String(String),
 }
 
-pub struct RedisProtocolParser;
+pub struct RedisProtocol;
 
-impl RedisProtocolParser {
-    pub fn parse_input(input: &[u8]) -> Result<RedisValue> {
+impl RedisProtocol {
+    pub fn parse_input(input: &[u8]) -> Result<Vec<String>> {
         let parts = input
             .split(|&b| b == b'\n')
             .map(|b| b.strip_suffix(b"\r").unwrap_or(b))
@@ -21,37 +21,23 @@ impl RedisProtocolParser {
             panic!("no data to read");
         };
 
-        match lead[0] {
-            b'*' => {
-                let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
-                let mut items = Vec::new();
-                for _ in 0..size {
-                    // TODO: Nested arrays
-                    // Note: For arrays, there should always be two more entries
-                    // One for the tag and one for the item
-                    let _item_tag = iter.next();
-                    let item = iter.next().unwrap();
-
-                    items.push(String::from_utf8(item.to_vec())?);
-                }
-                return Ok(RedisValue::Array(items));
-            }
-            b'+' => {
-                let value = String::from_utf8(lead[1..].to_vec())?;
-                return Ok(RedisValue::SimpleString(value));
-            }
-            b'$' => {
-                let Some(string) = iter.next() else {
-                    anyhow::bail!("need another parameter after tag");
-                };
-
-                let string = String::from_utf8(string.to_vec())?;
-                return Ok(RedisValue::String(string));
-            }
-            _ => {}
+        if lead[0] != b'*' {
+            anyhow::bail!("expected an array, got {}", lead[0]);
         }
 
-        anyhow::bail!("redis protocol needs to match something");
+        let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
+        let mut items = Vec::new();
+        for _ in 0..size {
+            // TODO: Nested arrays
+            // Note: For arrays, there should always be two more entries
+            // One for the tag and one for the item
+            let _item_tag = iter.next();
+            let item = iter.next().unwrap();
+
+            items.push(String::from_utf8(item.to_vec())?);
+        }
+
+        Ok(items)
     }
 
     pub fn string(input: impl AsRef<str>) -> String {
