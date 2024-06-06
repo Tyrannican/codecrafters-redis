@@ -49,4 +49,8 @@ impl RedisProtocol {
         let s_ref = input.as_ref();
         format!("+{s_ref}\r\n")
     }
+
+    pub fn null_string() -> String {
+        format!("$-1\r\n")
+    }
 }
