@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct RedisStoreEntry {
-    value: String,
+    pub value: String,
     expires: Option<u128>,
 }
 

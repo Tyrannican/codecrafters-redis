@@ -34,7 +34,7 @@ impl RedisProtocol {
             let _item_tag = iter.next();
             let item = iter.next().unwrap();
 
-            items.push(String::from_utf8(item.to_vec())?);
+            items.push(String::from_utf8(item.to_vec())?.to_lowercase());
         }
 
         Ok(items)
