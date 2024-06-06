@@ -4,12 +4,29 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
+mod protocol;
+use protocol::{RedisProtocolParser, RedisValue};
+
 async fn handler(mut client: TcpStream) -> Result<()> {
     loop {
         let mut buf = vec![0; 4096];
         let n = client.read(&mut buf).await?;
         buf.truncate(n);
-        client.write(b"+PONG\r\n").await?;
+        match RedisProtocolParser::parse_input(&buf)? {
+            RedisValue::Array(command) => match command[0].to_lowercase().as_str() {
+                "ping" => {
+                    client
+                        .write(RedisProtocolParser::simple_string("PONG").as_bytes())
+                        .await?;
+                }
+                "echo" => {
+                    let response = RedisProtocolParser::string(&command[1]);
+                    client.write(response.as_bytes()).await?;
+                }
+                _ => {}
+            },
+            _ => anyhow::bail!("incoming commands should be an array"),
+        }
     }
 }
 
