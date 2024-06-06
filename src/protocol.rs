@@ -53,4 +53,8 @@ impl RedisProtocol {
     pub fn null_string() -> String {
         format!("$-1\r\n")
     }
+
+    pub fn ok() -> String {
+        String::from("+OK\r\n")
+    }
 }

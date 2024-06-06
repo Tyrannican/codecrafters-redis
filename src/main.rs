@@ -39,6 +39,7 @@ impl RedisNode {
     }
 }
 
+// TODO: extract out and cleanup
 async fn handler(mut client: TcpStream, store: Arc<Mutex<RedisStore>>) -> Result<()> {
     loop {
         let mut buf = vec![0; 4096];
@@ -77,7 +78,7 @@ async fn handler(mut client: TcpStream, store: Arc<Mutex<RedisStore>>) -> Result
                 let entry = RedisStoreEntry::new(value.to_string());
                 let mut store = store.lock().await;
                 store.set(key.to_string(), entry);
-                client.write(b"+OK\r\n").await?;
+                client.write(RedisProtocol::ok().as_bytes()).await?;
             }
             _ => {}
         }
