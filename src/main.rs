@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -6,9 +7,11 @@ use tokio::{
 
 mod ops;
 mod protocol;
+mod store;
 
 use ops::RedisCommand;
 use protocol::RedisProtocol;
+use store::RedisStore;
 
 #[derive(Debug)]
 pub struct RedisNode {
