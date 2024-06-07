@@ -12,6 +12,7 @@ pub enum RedisCommand {
     Echo,
     Get,
     Set,
+    Info,
     Unknown(String),
 }
 
@@ -22,6 +23,7 @@ impl From<&String> for RedisCommand {
             "ping" => Self::Ping,
             "get" => Self::Get,
             "set" => Self::Set,
+            "info" => Self::Info,
             _ => Self::Unknown(value.to_owned()),
         }
     }
@@ -57,6 +59,13 @@ impl RedisCommand {
                 let mut store = store.lock().await;
                 store.set(key.to_string(), entry);
                 Ok(RedisProtocol::ok())
+            }
+            Self::Info => {
+                let info_type = &args[0];
+                match info_type.as_str() {
+                    "replication" => Ok(RedisProtocol::string("role:master")),
+                    _ => anyhow::bail!("invalid info type: {info_type}"),
+                }
             }
             Self::Unknown(cmd) => anyhow::bail!("unknown command received: {cmd}"),
         }
