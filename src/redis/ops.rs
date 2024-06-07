@@ -64,10 +64,7 @@ impl RedisCommand {
                 let info_type = &args[0];
                 let ctx = ctx.lock().await;
                 match info_type.as_str() {
-                    "replication" => Ok(RedisProtocol::string(format!(
-                        "role:{}",
-                        ctx.role.as_string()
-                    ))),
+                    "replication" => Ok(RedisProtocol::string(ctx.server_information())),
                     _ => anyhow::bail!("invalid info type: {info_type}"),
                 }
             }

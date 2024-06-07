@@ -16,9 +16,26 @@ impl ServerRole {
 }
 
 #[derive(Debug, Clone)]
+pub struct ServerInformation {
+    master_replid: String,
+    master_repl_offset: usize,
+}
+
+impl ServerInformation {
+    pub fn new() -> Self {
+        Self {
+            // TODO: Pass this in if required
+            master_replid: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_string(),
+            master_repl_offset: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ServerContext {
     pub role: ServerRole,
     store: RedisStore,
+    server_information: ServerInformation,
 }
 
 impl ServerContext {
@@ -26,7 +43,17 @@ impl ServerContext {
         Self {
             role,
             store: RedisStore::new(),
+            server_information: ServerInformation::new(),
         }
+    }
+
+    pub fn server_information(&self) -> String {
+        format!(
+            "role:{}master_replid:{}master_repl_offset:{}",
+            self.role.as_string(),
+            self.server_information.master_replid,
+            self.server_information.master_repl_offset
+        )
     }
 
     pub fn update_store(&mut self, key: String, value: RedisStoreEntry) {

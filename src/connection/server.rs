@@ -40,6 +40,10 @@ impl RedisNode {
 async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     loop {
         let request = client.recv().await?;
+        if request.is_empty() {
+            return Ok(());
+        }
+
         let command = RedisProtocol::parse_input(&request)?;
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
         let response = command.process(args, Arc::clone(&ctx)).await?;
