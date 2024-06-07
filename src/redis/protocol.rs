@@ -1,12 +1,5 @@
 use anyhow::Result;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum RedisValue {
-    Array(Vec<String>),
-    SimpleString(String),
-    String(String),
-}
-
 pub struct RedisProtocol;
 
 impl RedisProtocol {
