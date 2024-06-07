@@ -1,6 +1,9 @@
 use crate::{
-    connection::client::RedisClient,
-    redis::{ops::RedisCommand, protocol::RedisProtocol, store::RedisStore},
+    connection::{
+        client::RedisClient,
+        ctx::{ServerContext, ServerRole},
+    },
+    redis::{ops::RedisCommand, protocol::RedisProtocol},
 };
 
 use anyhow::Result;
@@ -11,14 +14,14 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct RedisNode {
     listener: TcpListener,
-    store: Arc<Mutex<RedisStore>>,
+    ctx: Arc<Mutex<ServerContext>>,
 }
 
 impl RedisNode {
     pub async fn new(address: &str) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
-        let store = Arc::new(Mutex::new(RedisStore::new()));
-        Ok(Self { listener, store })
+        let ctx = Arc::new(Mutex::new(ServerContext::new(ServerRole::Master)));
+        Ok(Self { listener, ctx })
     }
 
     pub async fn serve(&self) -> Result<()> {
@@ -28,18 +31,18 @@ impl RedisNode {
                 Err(err) => anyhow::bail!("something went wrong: {err}"),
             };
 
-            let store = Arc::clone(&self.store);
-            tokio::task::spawn(async move { handler(client, store).await });
+            let ctx = Arc::clone(&self.ctx);
+            tokio::task::spawn(async move { handler(client, ctx).await });
         }
     }
 }
 
-async fn handler(mut client: RedisClient, store: Arc<Mutex<RedisStore>>) -> Result<()> {
+async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     loop {
         let request = client.recv().await?;
         let command = RedisProtocol::parse_input(&request)?;
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
-        let response = command.process(args, Arc::clone(&store)).await?;
+        let response = command.process(args, Arc::clone(&ctx)).await?;
         client.send(response.as_bytes()).await?;
     }
 }

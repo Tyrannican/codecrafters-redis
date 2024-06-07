@@ -1,6 +1,6 @@
-use crate::redis::{
-    protocol::RedisProtocol,
-    store::{RedisStore, RedisStoreEntry},
+use crate::{
+    connection::ctx::ServerContext,
+    redis::{protocol::RedisProtocol, store::RedisStoreEntry},
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -30,14 +30,14 @@ impl From<&String> for RedisCommand {
 }
 
 impl RedisCommand {
-    pub async fn process(self, args: &[String], store: Arc<Mutex<RedisStore>>) -> Result<String> {
+    pub async fn process(self, args: &[String], ctx: Arc<Mutex<ServerContext>>) -> Result<String> {
         match self {
             Self::Ping => Ok(RedisProtocol::simple_string("PONG")),
             Self::Echo => Ok(RedisProtocol::string(&args[0])),
             Self::Get => {
                 let key = &args[0];
-                let mut store = store.lock().await;
-                match store.get(key) {
+                let mut ctx = ctx.lock().await;
+                match ctx.retrieve_from_store(key) {
                     Some(entry) => Ok(RedisProtocol::string(entry.value)),
                     None => Ok(RedisProtocol::null_string()),
                 }
@@ -56,14 +56,18 @@ impl RedisCommand {
                     RedisStoreEntry::new(value.to_string())
                 };
 
-                let mut store = store.lock().await;
-                store.set(key.to_string(), entry);
+                let mut ctx = ctx.lock().await;
+                ctx.update_store(key.to_string(), entry);
                 Ok(RedisProtocol::ok())
             }
             Self::Info => {
                 let info_type = &args[0];
+                let ctx = ctx.lock().await;
                 match info_type.as_str() {
-                    "replication" => Ok(RedisProtocol::string("role:master")),
+                    "replication" => Ok(RedisProtocol::string(format!(
+                        "role:{}",
+                        ctx.role.as_string()
+                    ))),
                     _ => anyhow::bail!("invalid info type: {info_type}"),
                 }
             }
