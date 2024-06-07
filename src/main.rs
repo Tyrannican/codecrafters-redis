@@ -6,34 +6,33 @@ use tokio::{
     sync::Mutex,
 };
 
-mod ops;
-mod protocol;
-mod store;
+mod redis;
 
-use ops::RedisCommand;
-use protocol::RedisProtocol;
-use store::{RedisStore, RedisStoreEntry};
+use redis::ops::RedisCommand;
+use redis::protocol::RedisProtocol;
+use redis::store::{RedisStore, RedisStoreEntry};
 
 #[derive(Debug)]
 pub struct RedisNode {
     listener: TcpListener,
+    store: Arc<Mutex<RedisStore>>,
 }
 
 impl RedisNode {
     pub async fn new(address: &str) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
-        Ok(Self { listener })
+        let store = Arc::new(Mutex::new(RedisStore::new()));
+        Ok(Self { listener, store })
     }
 
     pub async fn serve(&self) -> Result<()> {
-        let store = Arc::new(Mutex::new(RedisStore::new()));
         loop {
             let client = match self.listener.accept().await {
                 Ok((client, _)) => client,
                 Err(err) => anyhow::bail!("something went wrong: {err}"),
             };
 
-            let store = Arc::clone(&store);
+            let store = Arc::clone(&self.store);
             tokio::task::spawn(async move { handler(client, store).await });
         }
     }
@@ -47,41 +46,8 @@ async fn handler(mut client: TcpStream, store: Arc<Mutex<RedisStore>>) -> Result
         buf.truncate(n);
         let command = RedisProtocol::parse_input(&buf)?;
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
-        match command {
-            RedisCommand::Ping => {
-                client
-                    .write(RedisProtocol::simple_string("PONG").as_bytes())
-                    .await?;
-            }
-            RedisCommand::Echo => {
-                let response = RedisProtocol::string(&args[0]);
-                client.write(response.as_bytes()).await?;
-            }
-            RedisCommand::Get => {
-                let key = &args[0];
-                let mut store = store.lock().await;
-                match store.get(key) {
-                    Some(entry) => {
-                        client
-                            .write(RedisProtocol::string(entry.value).as_bytes())
-                            .await?;
-                    }
-                    None => {
-                        client
-                            .write(RedisProtocol::null_string().as_bytes())
-                            .await?;
-                    }
-                }
-            }
-            RedisCommand::Set => {
-                let (key, value) = (&args[0], &args[1]);
-                let entry = RedisStoreEntry::new(value.to_string());
-                let mut store = store.lock().await;
-                store.set(key.to_string(), entry);
-                client.write(RedisProtocol::ok().as_bytes()).await?;
-            }
-            _ => {}
-        }
+        let response = command.process(args, Arc::clone(&store)).await?;
+        client.write(response.as_bytes()).await?;
     }
 }
 
