@@ -1,16 +1,16 @@
 use crate::redis::store::{RedisStore, RedisStoreEntry};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerRole {
     Master,
-    Replica,
+    Replica(String),
 }
 
 impl ServerRole {
-    pub fn as_string(self) -> String {
-        match self {
+    pub fn as_string(&self) -> String {
+        match *self {
             Self::Master => "master".to_string(),
-            Self::Replica => "slave".to_string(),
+            Self::Replica(_) => "slave".to_string(),
         }
     }
 }

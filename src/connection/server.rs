@@ -18,9 +18,9 @@ pub struct RedisNode {
 }
 
 impl RedisNode {
-    pub async fn new(address: &str) -> Result<Self> {
+    pub async fn new(address: &str, server_role: ServerRole) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
-        let ctx = Arc::new(Mutex::new(ServerContext::new(ServerRole::Master)));
+        let ctx = Arc::new(Mutex::new(ServerContext::new(server_role)));
         Ok(Self { listener, ctx })
     }
 
