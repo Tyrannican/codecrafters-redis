@@ -14,7 +14,7 @@ impl RedisClient {
         Self { stream }
     }
 
-    pub async fn _new(addr: impl AsRef<str>) -> Result<Self> {
+    pub async fn new(addr: impl AsRef<str>) -> Result<Self> {
         let stream = TcpStream::connect(addr.as_ref()).await?;
         Ok(Self { stream })
     }

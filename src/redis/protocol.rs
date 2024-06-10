@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::fmt::Write;
 
 pub struct RedisProtocol;
 
@@ -31,6 +32,15 @@ impl RedisProtocol {
         }
 
         Ok(items)
+    }
+
+    pub fn array(input: &[impl AsRef<str>]) -> String {
+        let mut output = format!("*{}\r\n", input.len());
+        for param in input {
+            let _ = write!(output, "{}", Self::string(param));
+        }
+
+        output
     }
 
     pub fn string(input: impl AsRef<str>) -> String {

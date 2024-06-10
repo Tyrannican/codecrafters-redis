@@ -20,6 +20,10 @@ pub struct RedisNode {
 impl RedisNode {
     pub async fn new(address: &str, server_role: ServerRole) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
+        match &server_role {
+            ServerRole::Replica(addr) => repl_handshake(addr).await?,
+            _ => {}
+        }
         let ctx = Arc::new(Mutex::new(ServerContext::new(server_role)));
         Ok(Self { listener, ctx })
     }
@@ -49,4 +53,13 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
         let response = command.process(args, Arc::clone(&ctx)).await?;
         client.send(response.as_bytes()).await?;
     }
+}
+
+pub async fn repl_handshake(master: impl AsRef<str>) -> Result<()> {
+    let mut master = RedisClient::new(master.as_ref()).await?;
+    master
+        .send(RedisProtocol::array(&["PING"]).as_bytes())
+        .await?;
+
+    Ok(())
 }
