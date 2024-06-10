@@ -75,7 +75,13 @@ pub async fn repl_handshake(master: &ReplicaMaster) -> Result<()> {
     let _ = master.recv().await?;
 
     master
-        .send(RedisProtocol::array(&["REPLCONF", "capa", "psync2"]).as_bytes())
+        .send(RedisProtocol::array(&["REPLCONF", "capa", "eof", "capa", "psync2"]).as_bytes())
+        .await?;
+
+    let _ = master.recv().await?;
+
+    master
+        .send(RedisProtocol::array(&["PSYNC", "?", "-1"]).as_bytes())
         .await?;
 
     let _ = master.recv().await?;
