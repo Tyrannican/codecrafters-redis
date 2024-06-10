@@ -1,5 +1,6 @@
 use crate::redis::store::{RedisStore, RedisStoreEntry};
 
+// NOTE: Format is (master ip, master port, replica port)
 pub type ReplicaMaster = (String, u16, u16);
 
 #[derive(Debug, Clone, PartialEq, Eq)]

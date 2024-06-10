@@ -83,7 +83,7 @@ impl RedisProtocol {
     }
 
     pub fn null_string() -> String {
-        format!("$-1\r\n")
+        String::from("1\r\n")
     }
 
     pub fn ok() -> String {
