@@ -17,12 +17,12 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let address = format!("127.0.0.1:{}", cli.port);
+    let address = format!("127.0.0.1:{}", &cli.port);
     let server_role = match cli.replicaof {
         Some(addr) => {
             if let Some((addr, port)) = addr.split_once(" ") {
                 let addr = addr.replace("localhost", "127.0.0.1");
-                ServerRole::Replica(format!("{addr}:{port}"))
+                ServerRole::Replica((addr, port.parse::<u16>()?, cli.port))
             } else {
                 anyhow::bail!("invalid replica address: {addr}");
             }

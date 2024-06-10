@@ -1,9 +1,11 @@
 use crate::redis::store::{RedisStore, RedisStoreEntry};
 
+pub type ReplicaMaster = (String, u16, u16);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerRole {
     Master,
-    Replica(String),
+    Replica(ReplicaMaster),
 }
 
 impl ServerRole {

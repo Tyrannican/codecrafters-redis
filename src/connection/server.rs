@@ -11,6 +11,8 @@ use tokio::{net::TcpListener, sync::Mutex};
 
 use std::sync::Arc;
 
+use super::ctx::ReplicaMaster;
+
 #[derive(Debug)]
 pub struct RedisNode {
     listener: TcpListener,
@@ -21,7 +23,7 @@ impl RedisNode {
     pub async fn new(address: &str, server_role: ServerRole) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
         match &server_role {
-            ServerRole::Replica(addr) => repl_handshake(addr).await?,
+            ServerRole::Replica(addr) => repl_handshake(&addr).await?,
             _ => {}
         }
         let ctx = Arc::new(Mutex::new(ServerContext::new(server_role)));
@@ -55,11 +57,28 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
     }
 }
 
-pub async fn repl_handshake(master: impl AsRef<str>) -> Result<()> {
-    let mut master = RedisClient::new(master.as_ref()).await?;
+pub async fn repl_handshake(master: &ReplicaMaster) -> Result<()> {
+    let (m_addr, m_port, r_port) = master;
+    let mut master = RedisClient::new(format!("{m_addr}:{m_port}")).await?;
     master
         .send(RedisProtocol::array(&["PING"]).as_bytes())
         .await?;
+
+    let _ = master.recv().await?;
+
+    master
+        .send(
+            RedisProtocol::array(&["REPLCONF", "listening-port", &format!("{r_port}")]).as_bytes(),
+        )
+        .await?;
+
+    let _ = master.recv().await?;
+
+    master
+        .send(RedisProtocol::array(&["REPLCONF", "capa", "psync2"]).as_bytes())
+        .await?;
+
+    let _ = master.recv().await?;
 
     Ok(())
 }
