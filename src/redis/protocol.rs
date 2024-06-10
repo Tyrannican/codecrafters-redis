@@ -34,6 +34,35 @@ impl RedisProtocol {
         Ok(items)
     }
 
+    pub fn parse(input: &[u8]) -> Result<String> {
+        let parts = input
+            .split(|&b| b == b'\n')
+            .map(|b| b.strip_suffix(b"\r").unwrap_or(b))
+            .collect::<Vec<&[u8]>>();
+
+        if parts.is_empty() {
+            anyhow::bail!("no data to read");
+        }
+
+        let mut iter = parts.into_iter();
+        let Some(lead) = iter.next() else {
+            anyhow::bail!("no data!");
+        };
+
+        match lead[0] {
+            b'+' => {
+                let basic_str = String::from_utf8(lead[1..].to_vec())?;
+                return Ok(RedisProtocol::simple_string(basic_str));
+            }
+            b'$' => {
+                let bulk_str = String::from_utf8(lead[1..].to_vec())?;
+                return Ok(RedisProtocol::string(bulk_str));
+            }
+            b'*' => unimplemented!("arrays not yet parsable!"),
+            _ => anyhow::bail!("unknown tag: {}", lead[0]),
+        }
+    }
+
     pub fn array(input: &[impl AsRef<str>]) -> String {
         let mut output = format!("*{}\r\n", input.len());
         for param in input {
