@@ -13,6 +13,7 @@ pub enum RedisCommand {
     Get,
     Set,
     Info,
+    ReplConf,
     Unknown(String),
 }
 
@@ -24,6 +25,7 @@ impl From<&String> for RedisCommand {
             "get" => Self::Get,
             "set" => Self::Set,
             "info" => Self::Info,
+            "replconf" => Self::ReplConf,
             _ => Self::Unknown(value.to_owned()),
         }
     }
@@ -67,6 +69,10 @@ impl RedisCommand {
                     "replication" => Ok(RedisProtocol::string(ctx.server_information())),
                     _ => anyhow::bail!("invalid info type: {info_type}"),
                 }
+            }
+            Self::ReplConf => {
+                // TODO: Implement properly
+                Ok(RedisProtocol::ok())
             }
             Self::Unknown(cmd) => anyhow::bail!("unknown command received: {cmd}"),
         }

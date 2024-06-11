@@ -34,7 +34,7 @@ impl RedisProtocol {
         Ok(items)
     }
 
-    pub fn parse(input: &[u8]) -> Result<String> {
+    pub fn _parse(input: &[u8]) -> Result<String> {
         let parts = input
             .split(|&b| b == b'\n')
             .map(|b| b.strip_suffix(b"\r").unwrap_or(b))
@@ -83,7 +83,7 @@ impl RedisProtocol {
     }
 
     pub fn null_string() -> String {
-        String::from("1\r\n")
+        String::from("$-1\r\n")
     }
 
     pub fn ok() -> String {
