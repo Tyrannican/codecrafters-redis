@@ -34,7 +34,7 @@ impl From<&String> for RedisCommand {
 }
 
 impl RedisCommand {
-    pub async fn process(self, args: &[String], ctx: Arc<Mutex<ServerContext>>) -> Result<String> {
+    pub async fn process(&self, args: &[String], ctx: Arc<Mutex<ServerContext>>) -> Result<String> {
         match self {
             Self::Ping => Ok(RedisProtocol::simple_string("PONG")),
             Self::Echo => Ok(RedisProtocol::string(&args[0])),

@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         client::RedisClient,
-        ctx::{ServerContext, ServerRole},
+        ctx::{ReplicaMaster, ServerContext, ServerRole},
     },
     redis::{ops::RedisCommand, protocol::RedisProtocol},
 };
@@ -9,9 +9,9 @@ use crate::{
 use anyhow::Result;
 use tokio::{net::TcpListener, sync::Mutex};
 
-use std::sync::Arc;
+use std::{io::Write, sync::Arc};
 
-use super::ctx::ReplicaMaster;
+const EMPTY_RDB: &str = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 
 #[derive(Debug)]
 pub struct RedisNode {
@@ -54,7 +54,29 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
         let response = command.process(args, Arc::clone(&ctx)).await?;
         client.send(response.as_bytes()).await?;
+
+        // Any extras to be sent
+        post_processing(&mut client, Arc::clone(&ctx), command).await?;
     }
+}
+
+async fn post_processing(
+    client: &mut RedisClient,
+    _ctx: Arc<Mutex<ServerContext>>,
+    command: RedisCommand,
+) -> Result<()> {
+    match command {
+        RedisCommand::Psync => {
+            let rdb_file = hex::decode(EMPTY_RDB)?;
+            let mut content = vec![];
+            content.write(format!("${}\r\n", rdb_file.len()).as_bytes())?;
+            content.write(&rdb_file)?;
+
+            client.send(&content).await?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 pub async fn repl_handshake(master: &ReplicaMaster) -> Result<()> {
