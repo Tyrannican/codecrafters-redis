@@ -36,7 +36,7 @@ impl ServerInformation {
 
 #[derive(Debug, Clone)]
 pub struct ServerContext {
-    pub role: ServerRole,
+    role: ServerRole,
     store: RedisStore,
     server_information: ServerInformation,
 }
@@ -48,6 +48,10 @@ impl ServerContext {
             store: RedisStore::new(),
             server_information: ServerInformation::new(),
         }
+    }
+
+    pub fn _server_role(&self) -> ServerRole {
+        self.role.clone()
     }
 
     pub fn server_information(&self) -> String {

@@ -22,11 +22,11 @@ pub struct RedisNode {
 impl RedisNode {
     pub async fn new(address: &str, server_role: ServerRole) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
-        match &server_role {
-            ServerRole::Replica(addr) => repl_handshake(&addr).await?,
+        let ctx = Arc::new(Mutex::new(ServerContext::new(server_role.clone())));
+        match server_role {
+            ServerRole::Replica(addr) => repl_handshake(&addr, Arc::clone(&ctx)).await?,
             _ => {}
         }
-        let ctx = Arc::new(Mutex::new(ServerContext::new(server_role)));
         Ok(Self { listener, ctx })
     }
 
@@ -80,7 +80,7 @@ async fn post_processing(
     Ok(())
 }
 
-pub async fn repl_handshake(master: &ReplicaMaster) -> Result<()> {
+pub async fn repl_handshake(master: &ReplicaMaster, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     let (m_addr, m_port, r_port) = master;
     let mut master = RedisClient::new(format!("{m_addr}:{m_port}")).await?;
     master
@@ -108,6 +108,8 @@ pub async fn repl_handshake(master: &ReplicaMaster) -> Result<()> {
         .await?;
 
     let _ = master.recv().await?;
+
+    tokio::task::spawn(async move { handler(master, Arc::clone(&ctx)).await });
 
     Ok(())
 }
