@@ -66,6 +66,7 @@ async fn post_processing(
     command: RedisCommand,
 ) -> Result<()> {
     match command {
+        // Only occurs for the master
         RedisCommand::Psync => {
             let rdb_file = hex::decode(EMPTY_RDB)?;
             let mut content = vec![];
