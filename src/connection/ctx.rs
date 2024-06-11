@@ -59,6 +59,10 @@ impl ServerContext {
         )
     }
 
+    pub fn server_replid(&self) -> String {
+        self.server_information.master_replid.clone()
+    }
+
     pub fn update_store(&mut self, key: String, value: RedisStoreEntry) {
         self.store.set(key, value);
     }

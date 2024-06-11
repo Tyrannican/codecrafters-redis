@@ -14,6 +14,7 @@ pub enum RedisCommand {
     Set,
     Info,
     ReplConf,
+    Psync,
     Unknown(String),
 }
 
@@ -26,6 +27,7 @@ impl From<&String> for RedisCommand {
             "set" => Self::Set,
             "info" => Self::Info,
             "replconf" => Self::ReplConf,
+            "psync" => Self::Psync,
             _ => Self::Unknown(value.to_owned()),
         }
     }
@@ -73,6 +75,15 @@ impl RedisCommand {
             Self::ReplConf => {
                 // TODO: Implement properly
                 Ok(RedisProtocol::ok())
+            }
+            Self::Psync => {
+                if args.len() < 2 {
+                    anyhow::bail!("not enough arguments for psync");
+                }
+                let (_master_repl_id, _offset) = (&args[0], &args[1]);
+                let ctx = ctx.lock().await;
+                let resp = format!("FULLRESYNC {} 0", ctx.server_replid());
+                Ok(RedisProtocol::simple_string(resp))
             }
             Self::Unknown(cmd) => anyhow::bail!("unknown command received: {cmd}"),
         }
