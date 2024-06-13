@@ -1,10 +1,4 @@
-use crate::{
-    connection::client::RedisClient,
-    redis::store::{RedisStore, RedisStoreEntry},
-};
-
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::redis::store::{RedisStore, RedisStoreEntry};
 
 // NOTE: Format is (master ip, master port, replica port)
 pub type ReplicaMaster = (String, u16, u16);
@@ -45,8 +39,6 @@ pub struct ServerContext {
     role: ServerRole,
     store: RedisStore,
     server_information: ServerInformation,
-    replicas: Vec<Arc<Mutex<RedisClient>>>,
-    command_queue: Vec<String>,
 }
 
 impl ServerContext {
@@ -55,8 +47,6 @@ impl ServerContext {
             role,
             store: RedisStore::new(),
             server_information: ServerInformation::new(),
-            replicas: vec![],
-            command_queue: vec![],
         }
     }
 
@@ -77,27 +67,11 @@ impl ServerContext {
         self.server_information.master_replid.clone()
     }
 
-    pub fn command_queue(&mut self) -> &mut Vec<String> {
-        &mut self.command_queue
-    }
-
-    pub fn replicas(&self) -> &Vec<Arc<Mutex<RedisClient>>> {
-        &self.replicas
-    }
-
     pub fn update_store(&mut self, key: String, value: RedisStoreEntry) {
         self.store.set(key, value);
     }
 
     pub fn retrieve_from_store(&mut self, key: impl AsRef<str>) -> Option<RedisStoreEntry> {
         self.store.get(key.as_ref())
-    }
-
-    pub fn add_replica(&mut self, replica: Arc<Mutex<RedisClient>>) {
-        self.replicas.push(replica);
-    }
-
-    pub fn add_command(&mut self, cmd: String) {
-        self.command_queue.push(cmd);
     }
 }

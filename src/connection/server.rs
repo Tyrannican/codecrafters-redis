@@ -31,7 +31,7 @@ impl RedisNode {
     pub async fn serve(&self) -> Result<()> {
         loop {
             let client = match self.listener.accept().await {
-                Ok((client, _)) => Arc::new(Mutex::new(RedisClient::from_stream(client))),
+                Ok((client, _)) => RedisClient::from_stream(client),
                 Err(err) => anyhow::bail!("something went wrong: {err}"),
             };
 
@@ -41,11 +41,9 @@ impl RedisNode {
     }
 }
 
-async fn handler(client: Arc<Mutex<RedisClient>>, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
+async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     loop {
-        replicate(Arc::clone(&ctx)).await?;
-        let mut stream = client.lock().await;
-        let request = stream.recv().await?;
+        let request = client.recv().await?;
         if request.is_empty() {
             return Ok(());
         }
@@ -53,30 +51,12 @@ async fn handler(client: Arc<Mutex<RedisClient>>, ctx: Arc<Mutex<ServerContext>>
         let command = RedisProtocol::parse_input(&request)?;
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
         let response = command.process(args, Arc::clone(&ctx)).await?;
-        stream.send(response.as_bytes()).await?;
+        client.send(response.as_bytes()).await?;
 
         if command == RedisCommand::Psync {
-            stream.send(&empty_rdb()?).await?;
-            drop(stream);
-            let mut ctx = ctx.lock().await;
-            ctx.add_replica(Arc::clone(&client));
+            client.send(&empty_rdb()?).await?;
         }
     }
-}
-
-pub async fn replicate(ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
-    let mut ctx = ctx.lock().await;
-    let cmds = ctx.command_queue().drain(..).collect::<Vec<String>>();
-    let replicas = ctx.replicas();
-    for cmd in cmds {
-        for replica in replicas {
-            let mut stream = replica.lock().await;
-            println!("Sending {cmd}");
-            stream.send(cmd.as_bytes()).await?;
-        }
-    }
-
-    Ok(())
 }
 
 pub async fn repl_handshake(master: &ReplicaMaster, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
@@ -108,7 +88,6 @@ pub async fn repl_handshake(master: &ReplicaMaster, ctx: Arc<Mutex<ServerContext
 
     let _ = master.recv().await?;
 
-    let master = Arc::new(Mutex::new(master));
     tokio::task::spawn(async move { handler(master, Arc::clone(&ctx)).await });
 
     Ok(())
