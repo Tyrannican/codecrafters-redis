@@ -18,6 +18,21 @@ pub enum RedisCommand {
     Unknown(String),
 }
 
+impl RedisCommand {
+    pub fn to_string(&self) -> String {
+        match *self {
+            Self::Echo => "echo".to_string(),
+            Self::Ping => "ping".to_string(),
+            Self::Get => "get".to_string(),
+            Self::Set => "set".to_string(),
+            Self::Info => "info".to_string(),
+            Self::ReplConf => "replconf".to_string(),
+            Self::Psync => "psync".to_string(),
+            _ => unimplemented!("meh"),
+        }
+    }
+}
+
 impl From<&String> for RedisCommand {
     fn from(value: &String) -> Self {
         match value.to_lowercase().as_str() {
@@ -55,6 +70,7 @@ impl RedisCommand {
                         "ex" => expiry_len.parse::<u128>()? * 1000,
                         _ => anyhow::bail!("invalid expiry type: {expiry_type}"),
                     };
+
                     RedisStoreEntry::new(value.to_string()).expires(expiry_len)
                 } else {
                     RedisStoreEntry::new(value.to_string())
@@ -62,6 +78,9 @@ impl RedisCommand {
 
                 let mut ctx = ctx.lock().await;
                 ctx.update_store(key.to_string(), entry);
+                let mut command = vec![self.to_string()];
+                command.extend_from_slice(args);
+                ctx.add_command(RedisProtocol::array(&command));
                 Ok(RedisProtocol::ok())
             }
             Self::Info => {

@@ -3,15 +3,13 @@ use crate::{
         client::RedisClient,
         ctx::{ReplicaMaster, ServerContext, ServerRole},
     },
-    redis::{ops::RedisCommand, protocol::RedisProtocol},
+    redis::{ops::RedisCommand, protocol::RedisProtocol, rdb::empty_rdb},
 };
 
 use anyhow::Result;
 use tokio::{net::TcpListener, sync::Mutex};
 
-use std::{io::Write, sync::Arc};
-
-const EMPTY_RDB: &str = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct RedisNode {
@@ -33,7 +31,7 @@ impl RedisNode {
     pub async fn serve(&self) -> Result<()> {
         loop {
             let client = match self.listener.accept().await {
-                Ok((client, _)) => RedisClient::from_stream(client),
+                Ok((client, _)) => Arc::new(Mutex::new(RedisClient::from_stream(client))),
                 Err(err) => anyhow::bail!("something went wrong: {err}"),
             };
 
@@ -43,9 +41,11 @@ impl RedisNode {
     }
 }
 
-async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
+async fn handler(client: Arc<Mutex<RedisClient>>, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     loop {
-        let request = client.recv().await?;
+        replicate(Arc::clone(&ctx)).await?;
+        let mut stream = client.lock().await;
+        let request = stream.recv().await?;
         if request.is_empty() {
             return Ok(());
         }
@@ -53,30 +53,29 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
         let command = RedisProtocol::parse_input(&request)?;
         let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
         let response = command.process(args, Arc::clone(&ctx)).await?;
-        client.send(response.as_bytes()).await?;
+        stream.send(response.as_bytes()).await?;
 
-        // Any extras to be sent
-        post_processing(&mut client, Arc::clone(&ctx), command).await?;
+        if command == RedisCommand::Psync {
+            stream.send(&empty_rdb()?).await?;
+            drop(stream);
+            let mut ctx = ctx.lock().await;
+            ctx.add_replica(Arc::clone(&client));
+        }
     }
 }
 
-async fn post_processing(
-    client: &mut RedisClient,
-    _ctx: Arc<Mutex<ServerContext>>,
-    command: RedisCommand,
-) -> Result<()> {
-    match command {
-        // Only occurs for the master
-        RedisCommand::Psync => {
-            let rdb_file = hex::decode(EMPTY_RDB)?;
-            let mut content = vec![];
-            content.write(format!("${}\r\n", rdb_file.len()).as_bytes())?;
-            content.write(&rdb_file)?;
-
-            client.send(&content).await?;
+pub async fn replicate(ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
+    let mut ctx = ctx.lock().await;
+    let cmds = ctx.command_queue().drain(..).collect::<Vec<String>>();
+    let replicas = ctx.replicas();
+    for cmd in cmds {
+        for replica in replicas {
+            let mut stream = replica.lock().await;
+            println!("Sending {cmd}");
+            stream.send(cmd.as_bytes()).await?;
         }
-        _ => {}
     }
+
     Ok(())
 }
 
@@ -109,6 +108,7 @@ pub async fn repl_handshake(master: &ReplicaMaster, ctx: Arc<Mutex<ServerContext
 
     let _ = master.recv().await?;
 
+    let master = Arc::new(Mutex::new(master));
     tokio::task::spawn(async move { handler(master, Arc::clone(&ctx)).await });
 
     Ok(())
