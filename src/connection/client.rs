@@ -40,13 +40,12 @@ impl RedisClient {
         Ok(buf)
     }
 
-    pub async fn sender(&self) -> AsyncSender<String> {
+    pub fn sender(&self) -> AsyncSender<String> {
         self.cmd_sender.clone()
     }
 
-    pub async fn recv_on_channel(&mut self) -> Result<String> {
-        let cmd = self.cmd_receiver.recv().await?;
-        Ok(cmd)
+    pub fn receiver(&self) -> AsyncReceiver<String> {
+        self.cmd_receiver.clone()
     }
 
     pub async fn send(&mut self, data: &[u8]) -> Result<()> {

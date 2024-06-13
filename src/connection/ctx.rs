@@ -1,4 +1,5 @@
 use crate::redis::store::{RedisStore, RedisStoreEntry};
+use kanal::AsyncSender;
 
 // NOTE: Format is (master ip, master port, replica port)
 pub type ReplicaMaster = (String, u16, u16);
@@ -39,6 +40,8 @@ pub struct ServerContext {
     role: ServerRole,
     store: RedisStore,
     server_information: ServerInformation,
+    replicas: Vec<AsyncSender<String>>,
+    command_queue: Vec<String>,
 }
 
 impl ServerContext {
@@ -47,6 +50,8 @@ impl ServerContext {
             role,
             store: RedisStore::new(),
             server_information: ServerInformation::new(),
+            replicas: vec![],
+            command_queue: vec![],
         }
     }
 
@@ -63,6 +68,14 @@ impl ServerContext {
         )
     }
 
+    pub fn replicas(&self) -> &Vec<AsyncSender<String>> {
+        &self.replicas
+    }
+
+    pub fn command_queue(&mut self) -> &mut Vec<String> {
+        &mut self.command_queue
+    }
+
     pub fn server_replid(&self) -> String {
         self.server_information.master_replid.clone()
     }
@@ -73,5 +86,13 @@ impl ServerContext {
 
     pub fn retrieve_from_store(&mut self, key: impl AsRef<str>) -> Option<RedisStoreEntry> {
         self.store.get(key.as_ref())
+    }
+
+    pub fn add_command(&mut self, cmd: String) {
+        self.command_queue.push(cmd);
+    }
+
+    pub fn add_replica(&mut self, replica: AsyncSender<String>) {
+        self.replicas.push(replica);
     }
 }

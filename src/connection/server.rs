@@ -43,7 +43,16 @@ impl RedisNode {
 
 async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
     loop {
-        let request = client.recv().await?;
+        let repl_channel = client.receiver();
+        let request = tokio::select! {
+            cmd = repl_channel.recv() => {
+                let cmd = cmd?;
+                client.send(cmd.as_bytes()).await?;
+                continue;
+            }
+            req = client.recv() => { req? }
+        };
+
         if request.is_empty() {
             return Ok(());
         }
@@ -55,8 +64,24 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
 
         if command == RedisCommand::Psync {
             client.send(&empty_rdb()?).await?;
+            let mut ctx = ctx.lock().await;
+            ctx.add_replica(client.sender());
+        }
+
+        replicate(Arc::clone(&ctx)).await?;
+    }
+}
+
+pub async fn replicate(ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
+    let mut ctx = ctx.lock().await;
+    let cmd_queue = ctx.command_queue().drain(..).collect::<Vec<String>>();
+    for cmd in cmd_queue {
+        for replica in ctx.replicas() {
+            replica.send(cmd.clone()).await?;
         }
     }
+
+    Ok(())
 }
 
 pub async fn repl_handshake(master: &ReplicaMaster, ctx: Arc<Mutex<ServerContext>>) -> Result<()> {

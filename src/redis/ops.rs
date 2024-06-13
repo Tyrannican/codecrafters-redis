@@ -19,7 +19,7 @@ pub enum RedisCommand {
 }
 
 impl RedisCommand {
-    pub fn _to_string(&self) -> String {
+    pub fn to_string(&self) -> String {
         match *self {
             Self::Echo => "echo".to_string(),
             Self::Ping => "ping".to_string(),
@@ -78,6 +78,9 @@ impl RedisCommand {
 
                 let mut ctx = ctx.lock().await;
                 ctx.update_store(key.to_string(), entry);
+                let mut command = vec![self.to_string()];
+                command.extend_from_slice(args);
+                ctx.add_command(RedisProtocol::array(&command));
                 Ok(RedisProtocol::ok())
             }
             Self::Info => {
