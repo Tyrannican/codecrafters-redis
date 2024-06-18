@@ -4,34 +4,43 @@ use std::fmt::Write;
 pub struct RedisProtocol;
 
 impl RedisProtocol {
-    pub fn parse_input(input: &[u8]) -> Result<Vec<String>> {
+    pub fn parse_input(input: &[u8]) -> Result<Vec<Vec<String>>> {
         let parts = input
             .split(|&b| b == b'\n')
             .map(|b| b.strip_suffix(b"\r").unwrap_or(b))
             .collect::<Vec<&[u8]>>();
 
+        let mut output = vec![];
         let mut iter = parts.into_iter();
-        let Some(lead) = iter.next() else {
-            panic!("no data to read");
-        };
+        loop {
+            let Some(lead) = iter.next() else {
+                break;
+            };
 
-        if lead[0] != b'*' {
-            anyhow::bail!("expected an array, got {}", lead[0]);
+            if lead.is_empty() {
+                return Ok(output);
+            }
+
+            if lead[0] != b'*' {
+                anyhow::bail!("expected an array, got {}", lead[0]);
+            }
+
+            let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
+            let mut items = Vec::new();
+            for _ in 0..size {
+                // TODO: Nested arrays
+                // Note: For arrays, there should always be two more entries
+                // One for the tag and one for the item
+                let _item_tag = iter.next();
+                let item = iter.next().unwrap();
+
+                items.push(String::from_utf8(item.to_vec())?.to_lowercase());
+            }
+
+            output.push(items);
         }
 
-        let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
-        let mut items = Vec::new();
-        for _ in 0..size {
-            // TODO: Nested arrays
-            // Note: For arrays, there should always be two more entries
-            // One for the tag and one for the item
-            let _item_tag = iter.next();
-            let item = iter.next().unwrap();
-
-            items.push(String::from_utf8(item.to_vec())?.to_lowercase());
-        }
-
-        Ok(items)
+        Ok(output)
     }
 
     pub fn _parse(input: &[u8]) -> Result<String> {

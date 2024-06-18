@@ -25,6 +25,7 @@ impl RedisNode {
             ServerRole::Replica(addr) => repl_handshake(&addr, Arc::clone(&ctx)).await?,
             _ => {}
         }
+
         Ok(Self { listener, ctx })
     }
 
@@ -57,18 +58,21 @@ async fn handler(mut client: RedisClient, ctx: Arc<Mutex<ServerContext>>) -> Res
             return Ok(());
         }
 
-        let command = RedisProtocol::parse_input(&request)?;
-        let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
-        let response = command.process(args, Arc::clone(&ctx)).await?;
-        client.send(response.as_bytes()).await?;
+        let commands = RedisProtocol::parse_input(&request)?;
 
-        if command == RedisCommand::Psync {
-            client.send(&empty_rdb()?).await?;
-            let mut ctx = ctx.lock().await;
-            ctx.add_replica(client.sender());
+        for command in commands {
+            let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
+            let response = command.process(args, Arc::clone(&ctx)).await?;
+            client.send(response.as_bytes()).await?;
+
+            if command == RedisCommand::Psync {
+                client.send(&empty_rdb()?).await?;
+                let mut ctx = ctx.lock().await;
+                ctx.add_replica(client.sender());
+            }
+
+            replicate(Arc::clone(&ctx)).await?;
         }
-
-        replicate(Arc::clone(&ctx)).await?;
     }
 }
 
