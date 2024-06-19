@@ -80,7 +80,12 @@ async fn replication_handler(
 
         for command in commands {
             let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
-            command.process(args, Arc::clone(&ctx)).await?;
+            let responses = command.process(args, Arc::clone(&ctx)).await?;
+            if command == RedisCommand::ReplConf && args.contains(&"getack".to_string()) {
+                for response in responses {
+                    master.send(&response).await?;
+                }
+            }
         }
     }
 }

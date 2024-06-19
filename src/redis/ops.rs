@@ -99,7 +99,16 @@ impl RedisCommand {
                     _ => anyhow::bail!("invalid info type: {info_type}"),
                 }
             }
-            Self::ReplConf => responses.push(RedisProtocol::ok().into_bytes()),
+            Self::ReplConf => {
+                let cmd = &args[0];
+                match cmd.as_str() {
+                    "getack" => {
+                        println!("Got a getack");
+                        responses.push(RedisProtocol::array(&["REPLCONF", "ACK", "0"]).into_bytes())
+                    }
+                    _ => responses.push(RedisProtocol::ok().into_bytes()),
+                }
+            }
             Self::Psync => {
                 if args.len() < 2 {
                     anyhow::bail!("not enough arguments for psync");
