@@ -1,6 +1,6 @@
 use crate::{
     connection::ctx::ServerContext,
-    redis::{protocol::RedisProtocol, store::RedisStoreEntry},
+    redis::{protocol::RedisProtocol, rdb::empty_rdb, store::RedisStoreEntry},
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -49,16 +49,22 @@ impl From<&String> for RedisCommand {
 }
 
 impl RedisCommand {
-    pub async fn process(&self, args: &[String], ctx: Arc<Mutex<ServerContext>>) -> Result<String> {
+    pub async fn process(
+        &self,
+        args: &[String],
+        ctx: Arc<Mutex<ServerContext>>,
+    ) -> Result<Vec<Vec<u8>>> {
+        let mut responses = Vec::new();
+
         match self {
-            Self::Ping => Ok(RedisProtocol::simple_string("PONG")),
-            Self::Echo => Ok(RedisProtocol::string(&args[0])),
+            Self::Ping => responses.push(RedisProtocol::simple_string("PONG").into_bytes()),
+            Self::Echo => responses.push(RedisProtocol::string(&args[0]).into_bytes()),
             Self::Get => {
                 let key = &args[0];
                 let mut ctx = ctx.lock().await;
                 match ctx.retrieve_from_store(key) {
-                    Some(entry) => Ok(RedisProtocol::string(entry.value)),
-                    None => Ok(RedisProtocol::null_string()),
+                    Some(entry) => responses.push(RedisProtocol::string(entry.value).into_bytes()),
+                    None => responses.push(RedisProtocol::null_string().into_bytes()),
                 }
             }
             Self::Set => {
@@ -81,30 +87,34 @@ impl RedisCommand {
                 let mut command = vec![self.to_string()];
                 command.extend_from_slice(args);
                 ctx.add_command(RedisProtocol::array(&command));
-                Ok(RedisProtocol::ok())
+                responses.push(RedisProtocol::ok().into_bytes());
             }
             Self::Info => {
                 let info_type = &args[0];
                 let ctx = ctx.lock().await;
                 match info_type.as_str() {
-                    "replication" => Ok(RedisProtocol::string(ctx.server_information())),
+                    "replication" => {
+                        responses.push(RedisProtocol::string(ctx.server_information()).into_bytes())
+                    }
                     _ => anyhow::bail!("invalid info type: {info_type}"),
                 }
             }
-            Self::ReplConf => {
-                // TODO: Implement properly
-                Ok(RedisProtocol::ok())
-            }
+            Self::ReplConf => responses.push(RedisProtocol::ok().into_bytes()),
             Self::Psync => {
                 if args.len() < 2 {
                     anyhow::bail!("not enough arguments for psync");
                 }
                 let (_master_repl_id, _offset) = (&args[0], &args[1]);
                 let ctx = ctx.lock().await;
-                let resp = format!("FULLRESYNC {} 0", ctx.server_replid());
-                Ok(RedisProtocol::simple_string(resp))
+                let resp =
+                    RedisProtocol::simple_string(format!("FULLRESYNC {} 0", ctx.server_replid()));
+
+                responses.push(resp.into_bytes());
+                responses.push(empty_rdb()?);
             }
             Self::Unknown(cmd) => anyhow::bail!("unknown command received: {cmd}"),
         }
+
+        Ok(responses)
     }
 }

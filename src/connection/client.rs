@@ -7,7 +7,7 @@ use tokio::{
 
 #[derive(Debug)]
 pub struct RedisClient {
-    stream: TcpStream,
+    pub stream: TcpStream,
     cmd_sender: AsyncSender<String>,
     cmd_receiver: AsyncReceiver<String>,
 }

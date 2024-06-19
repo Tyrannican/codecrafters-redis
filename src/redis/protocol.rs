@@ -7,7 +7,7 @@ impl RedisProtocol {
     pub fn parse_input(input: &[u8]) -> Result<Vec<Vec<String>>> {
         let parts = input
             .split(|&b| b == b'\n')
-            .map(|b| b.strip_suffix(b"\r").unwrap_or(b))
+            .filter_map(|b| b.strip_suffix(b"\r"))
             .collect::<Vec<&[u8]>>();
 
         let mut output = vec![];
@@ -16,10 +16,6 @@ impl RedisProtocol {
             let Some(lead) = iter.next() else {
                 break;
             };
-
-            if lead.is_empty() {
-                return Ok(output);
-            }
 
             if lead[0] != b'*' {
                 anyhow::bail!("expected an array, got {}", lead[0]);
