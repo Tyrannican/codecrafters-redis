@@ -103,7 +103,6 @@ impl RedisCommand {
                 let cmd = &args[0];
                 match cmd.as_str() {
                     "getack" => {
-                        println!("Got a getack");
                         responses.push(RedisProtocol::array(&["REPLCONF", "ACK", "0"]).into_bytes())
                     }
                     _ => responses.push(RedisProtocol::ok().into_bytes()),

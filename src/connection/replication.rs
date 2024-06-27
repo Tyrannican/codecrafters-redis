@@ -65,6 +65,7 @@ async fn repl_handshake(master: &ReplicaMaster) -> Result<RedisClient> {
     Ok(master)
 }
 
+// TODO: Fix GETACK
 async fn replication_handler(
     mut master: RedisClient,
     ctx: Arc<Mutex<ServerContext>>,
@@ -79,6 +80,7 @@ async fn replication_handler(
         let commands = RedisProtocol::parse_input(&request)?;
 
         for command in commands {
+            println!("Command: {command:?}");
             let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
             let responses = command.process(args, Arc::clone(&ctx)).await?;
             if command == RedisCommand::ReplConf && args.contains(&"getack".to_string()) {
