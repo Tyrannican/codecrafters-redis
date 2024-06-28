@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+use evmap::{ReadHandle, WriteHandle};
+use evmap_derive::ShallowCopy;
+
+pub type StoreReader = ReadHandle<String, RedisStoreEntry>;
+pub type StoreWriter = WriteHandle<String, RedisStoreEntry>;
+
+#[derive(ShallowCopy, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct RedisStoreEntry {
     pub value: String,
     expires: Option<u128>,
@@ -12,6 +18,14 @@ impl RedisStoreEntry {
             value,
             expires: None,
         }
+    }
+
+    pub fn value(&self) -> Option<&str> {
+        if self.is_expired() {
+            return None;
+        }
+
+        Some(&self.value)
     }
 
     pub fn expires(mut self, millis: u128) -> Self {

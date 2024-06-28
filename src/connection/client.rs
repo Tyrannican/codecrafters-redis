@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bytes::BytesMut;
 use kanal::{unbounded_async, AsyncReceiver, AsyncSender};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -33,11 +34,10 @@ impl RedisClient {
     }
 
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
-        let mut buf = vec![0; 4096];
-        let n = self.stream.read(&mut buf).await?;
-        buf.truncate(n);
+        let mut buf = BytesMut::with_capacity(4096);
+        self.stream.read_buf(&mut buf).await?;
 
-        Ok(buf)
+        Ok(buf.to_vec())
     }
 
     pub fn sender(&self) -> AsyncSender<String> {

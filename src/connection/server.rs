@@ -21,6 +21,7 @@ pub struct RedisNode {
 impl RedisNode {
     pub async fn new(address: &str, server_role: ServerRole) -> Result<Self> {
         let listener = TcpListener::bind(address).await?;
+        let test = ServerContext::new(ServerRole::Master);
         let ctx = Arc::new(Mutex::new(ServerContext::new(server_role.clone())));
         match server_role {
             ServerRole::Replica(addr) => {
