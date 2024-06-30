@@ -1,10 +1,18 @@
+use super::ops::RedisCommand;
 use anyhow::Result;
 use std::fmt::Write;
 
 pub struct RedisProtocol;
 
+#[derive(Debug, Clone)]
+pub struct RedisMessage {
+    pub size: usize,
+    pub command: RedisCommand,
+    pub args: Vec<String>,
+}
+
 impl RedisProtocol {
-    pub fn parse_input(input: &[u8]) -> Result<Vec<Vec<String>>> {
+    pub fn parse_input(input: &[u8]) -> Result<Vec<RedisMessage>> {
         let parts = input
             .split(|&b| b == b'\n')
             .filter_map(|b| b.strip_suffix(b"\r"))
@@ -12,28 +20,39 @@ impl RedisProtocol {
 
         let mut output = vec![];
         let mut iter = parts.into_iter();
+        let mut total_read = 0;
         loop {
             let Some(lead) = iter.next() else {
                 break;
             };
 
+            total_read += 1;
             if lead[0] != b'*' {
                 anyhow::bail!("expected an array, got {}", lead[0]);
             }
 
+            total_read = lead[1..].len();
             let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
             let mut items = Vec::new();
             for _ in 0..size {
                 // TODO: Nested arrays
                 // Note: For arrays, there should always be two more entries
                 // One for the tag and one for the item
-                let _item_tag = iter.next();
+                let item_tag = iter.next().unwrap();
+                total_read += item_tag.len();
                 let item = iter.next().unwrap();
+                total_read += item.len();
 
                 items.push(String::from_utf8(item.to_vec())?.to_lowercase());
             }
 
-            output.push(items);
+            let (command, args) = (RedisCommand::from(&items[0]), items[1..].to_vec());
+            output.push(RedisMessage {
+                size: total_read,
+                command,
+                args,
+            });
+            total_read = 0;
         }
 
         Ok(output)

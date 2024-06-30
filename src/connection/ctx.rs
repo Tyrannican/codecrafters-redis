@@ -38,7 +38,6 @@ impl ServerInformation {
 #[derive(Debug, Clone)]
 pub struct ServerContext {
     role: ServerRole,
-    store: RedisStore,
     server_information: ServerInformation,
     replicas: Vec<AsyncSender<String>>,
     command_queue: Vec<String>,
@@ -48,7 +47,6 @@ impl ServerContext {
     pub fn new(role: ServerRole) -> Self {
         Self {
             role,
-            store: RedisStore::new(),
             server_information: ServerInformation::new(),
             replicas: vec![],
             command_queue: vec![],
@@ -78,14 +76,6 @@ impl ServerContext {
 
     pub fn server_replid(&self) -> String {
         self.server_information.master_replid.clone()
-    }
-
-    pub fn update_store(&mut self, key: String, value: RedisStoreEntry) {
-        self.store.set(key, value);
-    }
-
-    pub fn retrieve_from_store(&mut self, key: impl AsRef<str>) -> Option<RedisStoreEntry> {
-        self.store.get(key.as_ref())
     }
 
     pub fn add_command(&mut self, cmd: String) {
