@@ -58,34 +58,3 @@ impl RedisStoreEntry {
         return false;
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct RedisStore {
-    inner: HashMap<String, RedisStoreEntry>,
-}
-
-impl RedisStore {
-    pub fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
-    }
-
-    pub fn get(&mut self, key: impl AsRef<str>) -> Option<RedisStoreEntry> {
-        match self.inner.get(key.as_ref()) {
-            Some(entry) => {
-                if entry.is_expired() {
-                    self.inner.remove(key.as_ref());
-                    return None;
-                }
-
-                Some(entry.clone())
-            }
-            None => None,
-        }
-    }
-
-    pub fn set(&mut self, key: String, value: RedisStoreEntry) {
-        self.inner.insert(key, value);
-    }
-}

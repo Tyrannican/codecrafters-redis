@@ -1,34 +1,16 @@
 use crate::{
-    connection::{
-        client::RedisClient,
-        ctx::{ReplicaMaster, ServerContext},
-    },
-    redis::{
-        ops::RedisCommand,
-        protocol::RedisProtocol,
-        store::{StoreReader, StoreWriter},
-    },
+    connection::client::RedisClient,
+    redis::{ops::RedisCommand, protocol::RedisProtocol},
 };
 
 use anyhow::Result;
-use tokio::sync::Mutex;
 
-use std::sync::Arc;
-
-pub async fn start_replication(
-    master: &ReplicaMaster,
-    reader: StoreReader,
-    writer: Arc<Mutex<StoreWriter>>,
-    ctx: Arc<Mutex<ServerContext>>,
-) -> Result<()> {
-    let master = repl_handshake(master).await?;
-    replication_handler(master, reader, writer, ctx).await
+pub async fn start_replication(master: RedisClient, replica_port: u16) -> Result<()> {
+    let master = repl_handshake(master, replica_port).await?;
+    replication_handler(master).await
 }
 
-async fn repl_handshake(master: &ReplicaMaster) -> Result<RedisClient> {
-    let (m_addr, m_port, r_port) = master;
-    let mut master = RedisClient::new(format!("{m_addr}:{m_port}")).await?;
-
+async fn repl_handshake(mut master: RedisClient, replica_port: u16) -> Result<RedisClient> {
     master
         .send(RedisProtocol::array(&["PING"]).as_bytes())
         .await?;
@@ -37,7 +19,8 @@ async fn repl_handshake(master: &ReplicaMaster) -> Result<RedisClient> {
 
     master
         .send(
-            RedisProtocol::array(&["REPLCONF", "listening-port", &format!("{r_port}")]).as_bytes(),
+            RedisProtocol::array(&["REPLCONF", "listening-port", &format!("{replica_port}")])
+                .as_bytes(),
         )
         .await?;
 
@@ -68,12 +51,7 @@ async fn repl_handshake(master: &ReplicaMaster) -> Result<RedisClient> {
     Ok(master)
 }
 
-async fn replication_handler(
-    mut master: RedisClient,
-    reader: StoreReader,
-    writer: Arc<Mutex<StoreWriter>>,
-    ctx: Arc<Mutex<ServerContext>>,
-) -> Result<()> {
+async fn replication_handler(mut master: RedisClient) -> Result<()> {
     loop {
         let request = master.recv().await?;
 
@@ -84,17 +62,33 @@ async fn replication_handler(
         let messages = RedisProtocol::parse_input(&request)?;
 
         for message in messages {
-            let responses = message
-                .command
-                .process(reader.clone(), writer.clone(), ctx.clone())
-                .await?;
-            if message.command == RedisCommand::ReplConf
-                && message.args.contains(&"getack".to_string())
-            {
-                for response in responses {
-                    master.send(&response).await?;
+            // Update total processed but don't send a response
+            match message.command {
+                RedisCommand::Ping => {
+                    master.ping();
                 }
-            }
+                RedisCommand::Echo => {
+                    master.echo(&message.args);
+                }
+                RedisCommand::Get => {
+                    master.get(&message.args);
+                }
+                RedisCommand::Set => {
+                    master.set(&message.args).await?;
+                }
+                RedisCommand::Info => {
+                    master.info(&message.args).await?;
+                }
+                RedisCommand::ReplConf => {
+                    // Except here, we need to respond to this
+                    let response = master.replconf(&message.args).await;
+                    master.send(response.as_bytes()).await?;
+                }
+                RedisCommand::Psync => {
+                    master.psync(&message.args).await;
+                }
+                _ => unreachable!("not possible"),
+            };
         }
     }
 }

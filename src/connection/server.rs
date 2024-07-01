@@ -5,7 +5,6 @@ use crate::{
         replication::start_replication,
     },
     redis::{
-        ops::RedisCommand,
         protocol::RedisProtocol,
         store::{StoreReader, StoreWriter},
     },
@@ -30,14 +29,16 @@ impl RedisNode {
         let ctx = Arc::new(Mutex::new(ServerContext::new(server_role.clone())));
         let (store_reader, store_writer) = evmap::new();
         let store_writer = Arc::new(Mutex::new(store_writer));
+
         match server_role {
             ServerRole::Replica(addr) => {
+                let (m_addr, m_port, r_port) = addr;
+                let addr = format!("{m_addr}:{m_port}");
                 let ctx = Arc::clone(&ctx);
                 let reader = store_reader.clone();
                 let writer = Arc::clone(&store_writer);
-                tokio::task::spawn(
-                    async move { start_replication(&addr, reader, writer, ctx).await },
-                );
+                let master = RedisClient::new(addr, ctx, reader, writer).await?;
+                tokio::task::spawn(async move { start_replication(master, r_port).await });
             }
             _ => {}
         }
@@ -53,44 +54,39 @@ impl RedisNode {
     pub async fn serve(&self) -> Result<()> {
         loop {
             let client = match self.listener.accept().await {
-                Ok((client, _)) => RedisClient::from_stream(client),
+                Ok((client, _)) => {
+                    let reader = self.store_reader.clone();
+                    let writer = Arc::clone(&self.store_writer);
+                    let ctx = Arc::clone(&self.ctx);
+                    RedisClient::from_stream(client, ctx, reader, writer)
+                }
                 Err(err) => anyhow::bail!("something went wrong: {err}"),
             };
 
-            let ctx = Arc::clone(&self.ctx);
-            let writer = Arc::clone(&self.store_writer);
-            let reader = self.store_reader.clone();
-            tokio::task::spawn(async move { handler(client, reader, writer, ctx).await });
+            tokio::task::spawn(async move { handler(client).await });
         }
     }
 }
 
-async fn handler(
-    mut client: RedisClient,
-    reader: StoreReader,
-    writer: Arc<Mutex<StoreWriter>>,
-    ctx: Arc<Mutex<ServerContext>>,
-) -> Result<()> {
+async fn handler(mut client: RedisClient) -> Result<()> {
     loop {
-        // let repl_channel = client.receiver();
-        // let request = tokio::select! {
-        //     cmd = repl_channel.recv() => {
-        //         let cmd = cmd?;
-        //         client.send(cmd.as_bytes()).await?;
-        //         continue;
-        //     }
-        //     req = client.recv() => { req? }
-        // };
-        let request = client.recv().await?;
+        let repl_channel = client.receiver();
+        let request = tokio::select! {
+            cmd = repl_channel.recv() => {
+                let cmd = cmd?;
+                client.send(cmd.as_bytes()).await?;
+                continue;
+            }
+            req = client.recv() => { req? }
+        };
 
-        // if request.is_empty() {
-        //     return Ok(());
-        // }
+        if request.is_empty() {
+            return Ok(());
+        }
 
-        let commands = RedisProtocol::parse_input(&request)?;
-        for (size, command) in commands {
-            let ctx = ctx.lock().await;
-            let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
+        let messages = RedisProtocol::parse_input(&request)?;
+        for message in messages {
+            client.process(&message).await?;
         }
 
         // for command in commands {
@@ -108,16 +104,4 @@ async fn handler(
         //     replicate(Arc::clone(&ctx)).await?;
         // }
     }
-}
-
-pub async fn replicate(ctx: Arc<Mutex<ServerContext>>) -> Result<()> {
-    let mut ctx = ctx.lock().await;
-    let cmd_queue = ctx.command_queue().drain(..).collect::<Vec<String>>();
-    for cmd in cmd_queue {
-        for replica in ctx.replicas() {
-            replica.send(cmd.clone()).await?;
-        }
-    }
-
-    Ok(())
 }
