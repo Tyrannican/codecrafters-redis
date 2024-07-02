@@ -128,6 +128,10 @@ impl RedisClient {
                 self.send(resp.as_bytes()).await?;
                 self.send(&empty_rdb()?).await?;
             }
+            RedisCommand::Wait => {
+                let response = self.wait(&args).await;
+                self.send(response.as_bytes()).await?;
+            }
             RedisCommand::Unknown(cmd) => anyhow::bail!("unknown command received: {cmd}"),
         }
         Ok(())
@@ -209,6 +213,13 @@ impl RedisClient {
         drop(ctx);
 
         RedisProtocol::simple_string(format!("FULLRESYNC {} 0", replid))
+    }
+
+    pub async fn wait(&mut self, args: &[String]) -> String {
+        let replicas = &args[0];
+        let _timeout = &args[1];
+
+        RedisProtocol::integer(replicas.parse::<usize>().unwrap_or(0))
     }
 
     async fn replicate(&mut self, cmd: String) -> Result<()> {

@@ -107,6 +107,10 @@ impl RedisProtocol {
         format!("+{s_ref}\r\n")
     }
 
+    pub fn integer(input: usize) -> String {
+        format!(":{input}\r\n")
+    }
+
     pub fn null_string() -> String {
         String::from("$-1\r\n")
     }

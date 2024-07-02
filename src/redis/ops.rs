@@ -7,6 +7,7 @@ pub enum RedisCommand {
     Info,
     ReplConf,
     Psync,
+    Wait,
     Unknown(String),
 }
 
@@ -20,6 +21,7 @@ impl RedisCommand {
             Self::Info => "info".to_string(),
             Self::ReplConf => "replconf".to_string(),
             Self::Psync => "psync".to_string(),
+            Self::Wait => "wait".to_string(),
             _ => unimplemented!("meh"),
         }
     }
@@ -35,6 +37,7 @@ impl From<&String> for RedisCommand {
             "info" => Self::Info,
             "replconf" => Self::ReplConf,
             "psync" => Self::Psync,
+            "wait" => Self::Wait,
             _ => Self::Unknown(value.to_owned()),
         }
     }
