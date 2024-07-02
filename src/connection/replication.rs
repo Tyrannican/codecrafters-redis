@@ -5,12 +5,12 @@ use crate::{
 
 use anyhow::Result;
 
-pub async fn start_replication(master: RedisClient, replica_port: u16) -> Result<()> {
-    let master = repl_handshake(master, replica_port).await?;
+pub async fn start_replication(mut master: RedisClient, replica_port: u16) -> Result<()> {
+    repl_handshake(&mut master, replica_port).await?;
     replication_handler(master).await
 }
 
-async fn repl_handshake(mut master: RedisClient, replica_port: u16) -> Result<RedisClient> {
+async fn repl_handshake(master: &mut RedisClient, replica_port: u16) -> Result<()> {
     master
         .send(RedisProtocol::array(&["PING"]).as_bytes())
         .await?;
@@ -48,7 +48,7 @@ async fn repl_handshake(mut master: RedisClient, replica_port: u16) -> Result<Re
         let _ = master.recv().await?;
     }
 
-    Ok(master)
+    Ok(())
 }
 
 async fn replication_handler(mut master: RedisClient) -> Result<()> {
@@ -89,6 +89,13 @@ async fn replication_handler(mut master: RedisClient) -> Result<()> {
                 }
                 _ => unreachable!("not possible"),
             };
+
+            let ctx = master.context();
+            let mut ctx = ctx.lock().await;
+            ctx.update_server_offset(message.size);
+            drop(ctx);
+
+            println!("Command: {:?} Size: {}", message.command, message.size);
         }
     }
 }

@@ -88,20 +88,5 @@ async fn handler(mut client: RedisClient) -> Result<()> {
         for message in messages {
             client.process(&message).await?;
         }
-
-        // for command in commands {
-        //     let (command, args) = (RedisCommand::from(&command[0]), &command[1..]);
-        //     let responses = command.process(args, Arc::clone(&ctx)).await?;
-        //     for response in responses {
-        //         client.send(&response).await?;
-        //     }
-
-        //     if command == RedisCommand::Psync {
-        //         let mut ctx = ctx.lock().await;
-        //         ctx.add_replica(client.sender());
-        //     }
-
-        //     replicate(Arc::clone(&ctx)).await?;
-        // }
     }
 }

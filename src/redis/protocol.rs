@@ -12,6 +12,7 @@ pub struct RedisMessage {
 }
 
 impl RedisProtocol {
+    // TODO: Fix the size issue on messages
     pub fn parse_input(input: &[u8]) -> Result<Vec<RedisMessage>> {
         let parts = input
             .split(|&b| b == b'\n')
@@ -19,40 +20,35 @@ impl RedisProtocol {
             .collect::<Vec<&[u8]>>();
 
         let mut output = vec![];
+        println!("Parts: {parts:?}");
         let mut iter = parts.into_iter();
-        let mut total_read = 0;
         loop {
             let Some(lead) = iter.next() else {
                 break;
             };
 
-            total_read += 1;
             if lead[0] != b'*' {
                 anyhow::bail!("expected an array, got {}", lead[0]);
             }
 
-            total_read = lead[1..].len();
             let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
             let mut items = Vec::new();
             for _ in 0..size {
                 // TODO: Nested arrays
                 // Note: For arrays, there should always be two more entries
                 // One for the tag and one for the item
-                let item_tag = iter.next().unwrap();
-                total_read += item_tag.len();
+                let _item_tag = iter.next().unwrap();
                 let item = iter.next().unwrap();
-                total_read += item.len();
 
                 items.push(String::from_utf8(item.to_vec())?.to_lowercase());
             }
 
             let (command, args) = (RedisCommand::from(&items[0]), items[1..].to_vec());
             output.push(RedisMessage {
-                size: total_read,
+                size: 0,
                 command,
                 args,
             });
-            total_read = 0;
         }
 
         Ok(output)

@@ -63,6 +63,14 @@ impl ServerContext {
         )
     }
 
+    pub fn update_server_offset(&mut self, value: usize) {
+        self.server_information.master_repl_offset += value;
+    }
+
+    pub fn server_offset(&self) -> usize {
+        self.server_information.master_repl_offset
+    }
+
     pub fn replicas(&self) -> &Vec<AsyncSender<String>> {
         &self.replicas
     }

@@ -65,6 +65,10 @@ impl RedisClient {
         })
     }
 
+    pub fn context(&self) -> Arc<Mutex<ServerContext>> {
+        Arc::clone(&self.ctx)
+    }
+
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
         let mut buf = BytesMut::with_capacity(4096);
         self.stream.read_buf(&mut buf).await?;
@@ -186,7 +190,13 @@ impl RedisClient {
     pub async fn replconf(&mut self, args: &[String]) -> String {
         let cmd = &args[0];
         match cmd.as_str() {
-            "getack" => RedisProtocol::array(&["REPLCONF", "ACK", "0"]),
+            "getack" => {
+                let ctx = self.ctx.lock().await;
+                let offset = ctx.server_offset();
+                drop(ctx);
+
+                RedisProtocol::array(&["REPLCONF", "ACK", &format!("{offset}")])
+            }
             _ => RedisProtocol::ok(),
         }
     }

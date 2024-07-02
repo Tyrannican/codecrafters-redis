@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use evmap::{ReadHandle, WriteHandle};
 use evmap_derive::ShallowCopy;
 
