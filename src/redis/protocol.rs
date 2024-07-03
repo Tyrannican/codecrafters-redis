@@ -14,49 +14,75 @@ pub struct RedisMessage {
 impl RedisProtocol {
     // Note: Ugly counting but meh
     pub fn parse_input(input: &[u8]) -> Result<Vec<RedisMessage>> {
-        let parts = input
-            .split(|&b| b == b'\n')
-            .filter_map(|b| b.strip_suffix(b"\r"))
-            .collect::<Vec<&[u8]>>();
-
-        let mut total_size = 0;
         let mut output = vec![];
-        let mut iter = parts.into_iter();
-        loop {
-            let Some(lead) = iter.next() else {
-                break;
-            };
+        let parts = Self::split_messages(input);
 
-            if lead[0] != b'*' {
-                anyhow::bail!("expected an array, got {}", lead[0]);
+        for part in parts {
+            let size = part.len();
+            let inner = input
+                .split(|&b| b == b'\n')
+                .filter_map(|b| b.strip_suffix(b"\r"))
+                .collect::<Vec<&[u8]>>();
+            let mut iter = inner.into_iter();
+            while let Some(lead) = iter.next() {
+                //
+
+                if lead[0] != b'*' {
+                    anyhow::bail!("expected an array, got {}", lead[0]);
+                }
+
+                let arr_size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
+                let mut items = Vec::new();
+
+                for _ in 0..arr_size {
+                    // TODO: Nested arrays
+                    // Note: For arrays, there should always be two more entries
+                    // One for the tag and one for the item
+                    let _item_tag = iter.next().unwrap();
+                    let item = iter.next().unwrap();
+
+                    items.push(String::from_utf8(item.to_vec())?.to_lowercase());
+                }
+
+                let (command, args) = (RedisCommand::from(&items[0]), items[1..].to_vec());
+                output.push(RedisMessage {
+                    size,
+                    command,
+                    args,
+                });
             }
-
-            total_size += lead.len();
-            let size = String::from_utf8(lead[1..].to_vec())?.parse::<usize>()?;
-            let mut items = Vec::new();
-
-            total_size += 2;
-            for _ in 0..size {
-                // TODO: Nested arrays
-                // Note: For arrays, there should always be two more entries
-                // One for the tag and one for the item
-                let item_tag = iter.next().unwrap();
-                let item = iter.next().unwrap();
-                total_size += item.len() + item_tag.len() + 2;
-
-                items.push(String::from_utf8(item.to_vec())?.to_lowercase());
-                total_size += 2;
-            }
-
-            let (command, args) = (RedisCommand::from(&items[0]), items[1..].to_vec());
-            output.push(RedisMessage {
-                size: total_size,
-                command,
-                args,
-            });
         }
 
         Ok(output)
+    }
+
+    pub fn split_messages(input: &[u8]) -> Vec<Vec<u8>> {
+        let mut messages = vec![];
+        let mut iter = input.into_iter().peekable();
+
+        let mut inner = vec![];
+        while let Some(byte) = iter.next() {
+            if byte == &b'*' {
+                let peeked = iter.peek().unwrap();
+                if **peeked == b'\r' {
+                    inner.push(*iter.next().unwrap());
+                    inner.push(*iter.next().unwrap());
+                    messages.push(inner.clone());
+                    inner.clear();
+                } else {
+                    if !inner.is_empty() {
+                        messages.push(inner.clone());
+                        inner.clear();
+                    }
+                    inner.push(*byte);
+                }
+            } else {
+                inner.push(*byte);
+            }
+        }
+
+        messages.push(inner);
+        messages
     }
 
     pub fn _parse(input: &[u8]) -> Result<String> {
@@ -117,5 +143,31 @@ impl RedisProtocol {
 
     pub fn ok() -> String {
         String::from("+OK\r\n")
+    }
+}
+
+#[cfg(test)]
+mod prototests {
+    use super::*;
+
+    #[test]
+    fn handles_multi_array_messages() {
+        let first = RedisProtocol::array(&["SET", "key1", "banana"]);
+        let second = RedisProtocol::array(&["SET", "key2", "strawberry"]);
+        let third = RedisProtocol::array(&["SET", "key3", "pineapple"]);
+
+        let mut messages = vec![];
+        messages.extend_from_slice(&first.as_bytes());
+        messages.extend_from_slice(&second.as_bytes());
+        messages.extend_from_slice(&third.as_bytes());
+
+        let split = RedisProtocol::split_messages(&messages);
+
+        let string = String::from_utf8(split[0].clone()).unwrap();
+        assert_eq!(string, first);
+        let string = String::from_utf8(split[1].clone()).unwrap();
+        assert_eq!(string, second);
+        let string = String::from_utf8(split[2].clone()).unwrap();
+        assert_eq!(string, third);
     }
 }
