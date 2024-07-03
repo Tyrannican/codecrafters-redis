@@ -45,6 +45,9 @@ impl RedisProtocol {
                 }
 
                 let (command, args) = (RedisCommand::from(&items[0]), items[1..].to_vec());
+                if size == 0 {
+                    println!("Command: {command:?} Args: {args:?}");
+                }
                 output.push(RedisMessage {
                     size,
                     command,
@@ -65,6 +68,7 @@ impl RedisProtocol {
             if byte == &b'*' {
                 let peeked = iter.peek().unwrap();
                 if **peeked == b'\r' {
+                    inner.push(*byte);
                     inner.push(*iter.next().unwrap());
                     inner.push(*iter.next().unwrap());
                     messages.push(inner.clone());
@@ -81,7 +85,10 @@ impl RedisProtocol {
             }
         }
 
-        messages.push(inner);
+        if !inner.is_empty() {
+            messages.push(inner);
+        }
+
         messages
     }
 
@@ -169,5 +176,12 @@ mod prototests {
         assert_eq!(string, second);
         let string = String::from_utf8(split[2].clone()).unwrap();
         assert_eq!(string, third);
+    }
+
+    #[test]
+    fn handles_single_message() {
+        let mut single = RedisProtocol::array(&["REPLCONF", "GETACK", "*"]);
+        let split = RedisProtocol::split_messages(single.as_bytes());
+        assert_eq!(single, String::from_utf8(split[0].clone()).unwrap());
     }
 }
