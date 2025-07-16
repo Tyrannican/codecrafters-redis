@@ -11,7 +11,7 @@ impl ConnectionHandler {
         Self { stream }
     }
 
-    pub fn handle_connection(&mut self) -> Result<()> {
+    pub async fn handle_connection(&mut self) -> Result<()> {
         loop {
             let mut buf = [0; 4096];
             let n = self.stream.read(&mut buf)?;
@@ -26,7 +26,8 @@ impl ConnectionHandler {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
     for stream in listener.incoming() {
@@ -36,7 +37,11 @@ fn main() -> Result<()> {
         };
 
         let mut handler = ConnectionHandler::new(stream);
-        handler.handle_connection()?;
+        tokio::task::spawn(async move {
+            if let Err(err) = handler.handle_connection().await {
+                eprintln!("connection error occurred: {err:#?}");
+            };
+        });
     }
 
     Ok(())
