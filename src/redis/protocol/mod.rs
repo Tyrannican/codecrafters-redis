@@ -2,6 +2,7 @@ use bytes::Bytes;
 use thiserror::Error;
 
 mod codec;
+use super::utils::bytes_to_str;
 pub use codec::*;
 
 #[derive(Debug)]
@@ -12,21 +13,21 @@ pub enum CommandType {
     Set,
     RPush,
     LPush,
+    LRange,
+    RRange,
 }
 
 impl CommandType {
     pub fn from_bytes(b: &Bytes) -> Result<Self, RedisError> {
-        match str::from_utf8(&b[..])
-            .map_err(|_| RedisError::StringConversion)?
-            .to_lowercase()
-            .as_str()
-        {
+        match bytes_to_str(b)?.to_lowercase().as_str() {
             "ping" => Ok(Self::Ping),
             "echo" => Ok(Self::Echo),
             "get" => Ok(Self::Get),
             "set" => Ok(Self::Set),
             "rpush" => Ok(Self::RPush),
             "lpush" => Ok(Self::LPush),
+            "lrange" => Ok(Self::LRange),
+            "rrange" => Ok(Self::RRange),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -41,6 +42,8 @@ impl std::fmt::Display for CommandType {
             Self::Get => write!(f, "get"),
             Self::RPush => write!(f, "rpush"),
             Self::LPush => write!(f, "lpush"),
+            Self::LRange => write!(f, "lrange"),
+            Self::RRange => write!(f, "rrange"),
         }
     }
 }

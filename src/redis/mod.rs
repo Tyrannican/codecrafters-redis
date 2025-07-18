@@ -2,8 +2,10 @@ use kanal::{AsyncReceiver, AsyncSender};
 
 pub mod protocol;
 mod stores;
+mod utils;
 use protocol::{CommandType, RedisCommand, RedisError, Value};
 use stores::{ListStore, MapStore};
+use utils::bytes_to_integer;
 
 pub type Request = (Value, AsyncSender<Vec<Value>>);
 
@@ -60,7 +62,7 @@ impl Node {
                             None
                         };
 
-                        match self.map_store.set(key.clone(), value.clone(), ttl) {
+                        match self.map_store.set(key, value, ttl) {
                             Ok(_) => resp.push(Value::ok()),
                             Err(e) => resp.push(Value::Error(e.to_string().into())),
                         }
@@ -73,10 +75,30 @@ impl Node {
                         let key = &req.args[0];
                         let mut size = 0;
                         for value in req.args[1..].iter() {
-                            size = self.list_store.append(key.clone(), value.clone());
+                            size = self.list_store.append(key, value);
                         }
 
                         resp.push(Value::Integer(size as i64));
+                    }
+                }
+                CommandType::LRange | CommandType::RRange => {
+                    if req.args.len() != 3 {
+                        resp.push(Value::error("insufficient arguments for rpush"));
+                    } else {
+                        let key = &req.args[0];
+                        let start = bytes_to_integer(&req.args[1])?;
+                        let end = bytes_to_integer(&req.args[2])?;
+                        match self.list_store.slice(key, start, end) {
+                            Some(slice) => {
+                                let values = slice
+                                    .into_iter()
+                                    .map(|v| Value::String(v.clone()))
+                                    .collect::<Vec<Value>>();
+
+                                resp.push(Value::Array(values));
+                            }
+                            None => resp.push(Value::EmptyArray),
+                        }
                     }
                 }
                 _ => todo!(),

@@ -52,7 +52,12 @@ impl MapStore {
         Some(&value.value)
     }
 
-    pub fn set(&mut self, key: Bytes, value: Bytes, ttl: Option<Bytes>) -> Result<(), RedisError> {
+    pub fn set(
+        &mut self,
+        key: &Bytes,
+        value: &Bytes,
+        ttl: Option<Bytes>,
+    ) -> Result<(), RedisError> {
         let ttl = if let Some(ex) = ttl {
             let ms_str = str::from_utf8(&ex).map_err(|_| RedisError::StringConversion)?;
             let ms = ms_str
@@ -64,9 +69,9 @@ impl MapStore {
             None
         };
 
-        let store_value = MapStoreValue::new(value, ttl);
+        let store_value = MapStoreValue::new(value.clone(), ttl);
 
-        self.map.insert(key, store_value);
+        self.map.insert(key.clone(), store_value);
         Ok(())
     }
 }
