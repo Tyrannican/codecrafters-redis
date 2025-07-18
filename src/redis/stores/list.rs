@@ -29,19 +29,28 @@ impl ListStore {
     pub fn slice(&self, key: &Bytes, start: i64, end: i64) -> Option<&[Bytes]> {
         if let Some(list) = self.map.get(key) {
             let start = if start < 0 {
-                (list.len() as i64 + start) as usize
+                if i64::abs(start) > list.len() as i64 {
+                    0
+                } else {
+                    (list.len() as i64 + start) as usize
+                }
             } else {
                 start as usize
             };
 
             let end = if end < 0 {
-                (list.len() as i64 + end) as usize
+                if i64::abs(end) > list.len() as i64 {
+                    0
+                } else {
+                    (list.len() as i64 + end) as usize
+                }
             } else if end >= list.len() as i64 {
                 list.len() - 1
             } else {
                 end as usize
             };
 
+            dbg!(start, end);
             if start > end || start >= list.len() {
                 return None;
             }
