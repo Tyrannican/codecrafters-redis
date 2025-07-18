@@ -29,10 +29,6 @@ impl Value {
     pub fn error(msg: &'static str) -> Self {
         Value::Error(msg.into())
     }
-
-    pub fn null() -> Self {
-        Value::String("-1".into())
-    }
 }
 
 #[derive(Debug, Error)]

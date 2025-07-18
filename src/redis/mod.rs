@@ -61,7 +61,7 @@ impl Node {
                             .await
                             .map_err(|_| RedisError::ChannelSendError)?,
                         None => responder
-                            .send(vec![Value::null()])
+                            .send(vec![Value::NullString])
                             .await
                             .map_err(|_| RedisError::ChannelSendError)?,
                     }
