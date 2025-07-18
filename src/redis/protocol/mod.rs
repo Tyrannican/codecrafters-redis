@@ -21,6 +21,20 @@ pub enum Value {
     NullArray,
 }
 
+impl Value {
+    pub fn ok() -> Self {
+        Value::SimpleString("OK".into())
+    }
+
+    pub fn error(msg: &'static str) -> Self {
+        Value::Error(msg.into())
+    }
+
+    pub fn null() -> Self {
+        Value::String("-1".into())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RedisError {
     #[error("failed to parse integer")]

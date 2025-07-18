@@ -33,7 +33,7 @@ impl ConnectionHandler {
                         self.node_channel.send((value, tx.clone())).await?;
                         let Ok(resp) = rx.recv().await else {
                             self.stream
-                                .send(Value::Error("error occurred receiving value".into()))
+                                .send(Value::error("error occurred receiving value"))
                                 .await?;
 
                             continue;
