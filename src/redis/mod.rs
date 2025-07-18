@@ -72,10 +72,23 @@ impl Node {
                     if req.args.len() < 2 {
                         resp.push(Value::error("insufficient arguments for rpush"));
                     } else {
-                        let key = &req.args[0];
                         let mut size = 0;
+                        let key = &req.args[0];
                         for value in req.args[1..].iter() {
                             size = self.list_store.append(key, value);
+                        }
+
+                        resp.push(Value::Integer(size as i64));
+                    }
+                }
+                CommandType::LPush => {
+                    if req.args.len() < 2 {
+                        resp.push(Value::error("insufficient arguments for rpush"));
+                    } else {
+                        let mut size = 0;
+                        let key = &req.args[0];
+                        for value in req.args[1..].iter() {
+                            size = self.list_store.prepend(key, value);
                         }
 
                         resp.push(Value::Integer(size as i64));

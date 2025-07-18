@@ -26,31 +26,22 @@ impl ListStore {
         entry.len()
     }
 
+    pub fn prepend(&mut self, key: &Bytes, element: &Bytes) -> usize {
+        let entry = self.map.entry(key.clone()).or_insert(Vec::new());
+        entry.insert(0, element.clone());
+        entry.len()
+    }
+
     pub fn slice(&self, key: &Bytes, start: i64, end: i64) -> Option<&[Bytes]> {
         if let Some(list) = self.map.get(key) {
-            let start = if start < 0 {
-                if i64::abs(start) > list.len() as i64 {
-                    0
-                } else {
-                    (list.len() as i64 + start) as usize
-                }
-            } else {
-                start as usize
-            };
+            let list_size = list.len();
+            let start = idx_calc(start, list_size);
+            let mut end = idx_calc(end, list_size);
 
-            let end = if end < 0 {
-                if i64::abs(end) > list.len() as i64 {
-                    0
-                } else {
-                    (list.len() as i64 + end) as usize
-                }
-            } else if end >= list.len() as i64 {
-                list.len() - 1
-            } else {
-                end as usize
-            };
+            if end >= list_size {
+                end = list_size - 1
+            }
 
-            dbg!(start, end);
             if start > end || start >= list.len() {
                 return None;
             }
@@ -59,5 +50,18 @@ impl ListStore {
         }
 
         None
+    }
+}
+
+#[inline]
+fn idx_calc(int: i64, list_size: usize) -> usize {
+    if int < 0 {
+        if i64::abs(int) > list_size as i64 {
+            0
+        } else {
+            (list_size as i64 + int) as usize
+        }
+    } else {
+        int as usize
     }
 }
