@@ -51,6 +51,15 @@ impl ListStore {
 
         None
     }
+
+    pub fn remove(&mut self, key: &Bytes, to_remove: usize) -> Option<Vec<Bytes>> {
+        if let Some(list) = self.map.get_mut(key) {
+            let sub_list: Vec<Bytes> = list.drain(..to_remove).collect();
+            return Some(sub_list);
+        }
+
+        None
+    }
 }
 
 #[inline]

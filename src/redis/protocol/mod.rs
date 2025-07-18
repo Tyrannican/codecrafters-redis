@@ -15,6 +15,8 @@ pub enum CommandType {
     LPush,
     LRange,
     RRange,
+    LLen,
+    LPop,
 }
 
 impl CommandType {
@@ -28,6 +30,8 @@ impl CommandType {
             "lpush" => Ok(Self::LPush),
             "lrange" => Ok(Self::LRange),
             "rrange" => Ok(Self::RRange),
+            "llen" => Ok(Self::LLen),
+            "lpop" => Ok(Self::LPop),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -44,6 +48,8 @@ impl std::fmt::Display for CommandType {
             Self::LPush => write!(f, "lpush"),
             Self::LRange => write!(f, "lrange"),
             Self::RRange => write!(f, "rrange"),
+            Self::LLen => write!(f, "llen"),
+            Self::LPop => write!(f, "lpop"),
         }
     }
 }

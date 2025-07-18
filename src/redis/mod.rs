@@ -114,6 +114,41 @@ impl Node {
                         }
                     }
                 }
+                CommandType::LLen => {
+                    if req.args.is_empty() {
+                        resp.push(Value::error("insufficient arguments for llen"));
+                    } else {
+                        let key = &req.args[0];
+                        let size = self.list_store.len(key);
+                        resp.push(Value::Integer(size as i64));
+                    }
+                }
+                CommandType::LPop => {
+                    if req.args.is_empty() {
+                        resp.push(Value::error("insufficient arguments for lpop"));
+                    } else {
+                        let key = &req.args[0];
+                        let to_remove = match req.args.get(1) {
+                            Some(total) => bytes_to_integer(total)? as usize,
+                            None => 1,
+                        };
+
+                        match self.list_store.remove(key, to_remove) {
+                            Some(elements) => {
+                                if elements.len() == 1 {
+                                    resp.push(Value::String(elements[0].clone()))
+                                } else {
+                                    let values = elements
+                                        .into_iter()
+                                        .map(|v| Value::String(v))
+                                        .collect::<Vec<Value>>();
+                                    resp.push(Value::Array(values));
+                                }
+                            }
+                            None => resp.push(Value::NullString),
+                        }
+                    }
+                }
                 _ => todo!(),
             }
 
