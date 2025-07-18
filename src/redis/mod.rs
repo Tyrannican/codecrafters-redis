@@ -1,15 +1,16 @@
 use kanal::{AsyncReceiver, AsyncSender};
 
 pub mod protocol;
-mod store;
-use protocol::{RedisError, Value};
-use store::MapStore;
+mod stores;
+use protocol::{CommandType, RedisCommand, RedisError, Value};
+use stores::{ListStore, MapStore};
 
 pub type Request = (Value, AsyncSender<Vec<Value>>);
 
 pub struct Node {
     request_channel: AsyncReceiver<Request>,
     map_store: MapStore,
+    list_store: ListStore,
 }
 
 impl Node {
@@ -17,83 +18,74 @@ impl Node {
         Self {
             request_channel: rx,
             map_store: MapStore::new(),
+            list_store: ListStore::new(),
         }
     }
 
     pub async fn process(&mut self) -> Result<(), RedisError> {
         while let Ok((req, responder)) = self.request_channel.recv().await {
-            let Value::Array(args) = req else {
-                return Err(RedisError::UnexpectedValue);
-            };
+            let req = RedisCommand::new(req)?;
+            let mut resp = Vec::new();
 
-            let Value::String(cmd_bytes) = &args[0] else {
-                return Err(RedisError::UnexpectedValue);
-            };
-
-            match str::from_utf8(&cmd_bytes[..])
-                .map_err(|_| RedisError::StringConversion)?
-                .to_lowercase()
-                .as_str()
-            {
-                "ping" => responder
-                    .send(vec![Value::SimpleString("PONG".into())])
-                    .await
-                    .map_err(|_| RedisError::ChannelSendError)?,
-
-                "echo" => {
-                    let Some(Value::String(arg)) = args.get(1) else {
-                        return Err(RedisError::UnexpectedValue);
-                    };
-
-                    responder
-                        .send(vec![Value::String(arg.clone())])
-                        .await
-                        .map_err(|_| RedisError::ChannelSendError)?;
-                }
-                "get" => {
-                    let Some(Value::String(key)) = args.get(1) else {
-                        return Err(RedisError::UnexpectedValue);
-                    };
-
-                    match self.map_store.get(key) {
-                        Some(value) => responder
-                            .send(vec![Value::String(value.clone())])
-                            .await
-                            .map_err(|_| RedisError::ChannelSendError)?,
-                        None => responder
-                            .send(vec![Value::NullString])
-                            .await
-                            .map_err(|_| RedisError::ChannelSendError)?,
+            match req.cmd {
+                CommandType::Ping => resp.push(Value::SimpleString("PONG".into())),
+                CommandType::Echo => {
+                    if req.args.is_empty() {
+                        resp.push(Value::error("insuffient arguments for echo"));
+                    } else {
+                        let msg = &req.args[0];
+                        resp.push(Value::String(msg.clone()));
                     }
                 }
-                "set" => {
-                    let has_expiry = args[1..].len() == 4;
-                    let Some(Value::String(key)) = args.get(1) else {
-                        return Err(RedisError::UnexpectedValue);
-                    };
-
-                    let Some(Value::String(value)) = args.get(2) else {
-                        return Err(RedisError::UnexpectedValue);
-                    };
-
-                    let ttl = if has_expiry {
-                        let Some(Value::String(ex)) = args.get(4) else {
-                            return Err(RedisError::UnexpectedValue);
+                CommandType::Get => {
+                    if req.args.is_empty() {
+                        resp.push(Value::error("insuffient arguments for get"));
+                    } else {
+                        let key = &req.args[0];
+                        match self.map_store.get(key) {
+                            Some(value) => resp.push(Value::String(value.clone())),
+                            None => resp.push(Value::NullString),
+                        }
+                    }
+                }
+                CommandType::Set => {
+                    if req.args.len() < 2 {
+                        resp.push(Value::error("insufficient arguments for set"));
+                    } else {
+                        let key = &req.args[0];
+                        let value = &req.args[1];
+                        let ttl = if req.args.len() == 4 {
+                            Some(req.args[3].clone())
+                        } else {
+                            None
                         };
 
-                        Some(ex.clone())
-                    } else {
-                        None
-                    };
-
-                    self.map_store.set(key.clone(), value.clone(), ttl)?;
-                    responder
-                        .send(vec![Value::ok()])
-                        .await
-                        .map_err(|_| RedisError::ChannelSendError)?
+                        match self.map_store.set(key.clone(), value.clone(), ttl) {
+                            Ok(_) => resp.push(Value::ok()),
+                            Err(e) => resp.push(Value::Error(e.to_string().into())),
+                        }
+                    }
                 }
-                _ => {}
+                CommandType::RPush => {
+                    if req.args.len() < 2 {
+                        resp.push(Value::error("insufficient arguments for rpush"));
+                    } else {
+                        let key = &req.args[0];
+                        let mut size = 0;
+                        for value in req.args[1..].iter() {
+                            size = self.list_store.append(key.clone(), value.clone());
+                        }
+
+                        resp.push(Value::Integer(size as i64));
+                    }
+                }
+                _ => todo!(),
             }
+
+            responder
+                .send(resp)
+                .await
+                .map_err(|_| RedisError::ChannelSendError)?;
         }
 
         Ok(())

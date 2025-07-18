@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 
-use super::protocol::RedisError;
+use crate::redis::protocol::RedisError;
 
 struct MapStoreValue {
     value: Bytes,
@@ -90,8 +90,8 @@ mod map_store_tests {
     fn store_test() -> Result<(), RedisError> {
         let mut ms = MapStore::new();
         ms.set("hello".into(), "there".into(), None)?;
-        assert!(ms.get("hello".into()).is_some());
-        assert!(ms.get("not present".into()).is_none());
+        assert!(ms.get(&"hello".into()).is_some());
+        assert!(ms.get(&"not present".into()).is_none());
 
         Ok(())
     }
@@ -100,9 +100,9 @@ mod map_store_tests {
     fn store_expired_values() -> Result<(), RedisError> {
         let mut ms = MapStore::new();
         ms.set("hello".into(), "there".into(), Some("200".into()))?;
-        assert!(ms.get("hello".into()).is_some());
+        assert!(ms.get(&"hello".into()).is_some());
         std::thread::sleep(Duration::from_millis(300));
-        assert!(ms.get("hello".into()).is_none());
+        assert!(ms.get(&"hello".into()).is_none());
 
         Ok(())
     }
