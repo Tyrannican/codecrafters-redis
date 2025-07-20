@@ -1,8 +1,10 @@
 use anyhow::Result;
+use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use kanal::{unbounded_async, AsyncSender};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::Framed;
+use uuid::Uuid;
 
 mod redis;
 use redis::{
@@ -11,15 +13,17 @@ use redis::{
 };
 
 struct ConnectionHandler {
+    id: Bytes,
     stream: Framed<TcpStream, RespProtocol>,
-    node_channel: AsyncSender<Request>,
+    request_channel: AsyncSender<Request>,
 }
 
 impl ConnectionHandler {
     pub fn new(stream: TcpStream, node_channel: AsyncSender<Request>) -> Self {
         Self {
+            id: Bytes::from(Uuid::new_v4().to_string()),
             stream: Framed::new(stream, RespProtocol),
-            node_channel,
+            request_channel: node_channel,
         }
     }
 
@@ -30,17 +34,20 @@ impl ConnectionHandler {
             while let Some(frame) = self.stream.next().await {
                 match frame {
                     Ok(value) => {
-                        self.node_channel.send((value, tx.clone())).await?;
-                        let Ok(resp) = rx.recv().await else {
+                        self.request_channel
+                            .send((value, self.id.clone(), tx.clone()))
+                            .await?;
+
+                        let Ok(response) = rx.recv().await else {
                             self.stream
-                                .send(Value::error("error occurred receiving value"))
+                                .send(Value::error("error occurred receiving value".into()))
                                 .await?;
 
                             continue;
                         };
 
-                        for value in resp {
-                            self.stream.send(value).await?;
+                        for r in response {
+                            self.stream.send(r).await?;
                         }
                     }
                     Err(e) => {
@@ -57,13 +64,13 @@ impl ConnectionHandler {
 async fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
     let (tx, rx) = unbounded_async::<Request>();
-    let mut node = Node::new(rx);
 
-    tokio::task::spawn(async move { node.process().await });
+    let mut node = Node::new(5);
+    node.start(rx);
 
     loop {
         if let Ok(stream) = listener.accept().await {
-            let (stream, _addr) = stream;
+            let (stream, _) = stream;
             let mut handler = ConnectionHandler::new(stream, tx.clone());
             tokio::task::spawn(async move {
                 if let Err(err) = handler.handle_connection().await {

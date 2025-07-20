@@ -5,7 +5,7 @@ mod codec;
 use super::utils::bytes_to_str;
 pub use codec::*;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum CommandType {
     Ping,
     Echo,
@@ -17,6 +17,7 @@ pub enum CommandType {
     RRange,
     LLen,
     LPop,
+    BLPop,
 }
 
 impl CommandType {
@@ -32,6 +33,7 @@ impl CommandType {
             "rrange" => Ok(Self::RRange),
             "llen" => Ok(Self::LLen),
             "lpop" => Ok(Self::LPop),
+            "blpop" => Ok(Self::BLPop),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -50,6 +52,7 @@ impl std::fmt::Display for CommandType {
             Self::RRange => write!(f, "rrange"),
             Self::LLen => write!(f, "llen"),
             Self::LPop => write!(f, "lpop"),
+            Self::BLPop => write!(f, "blpop"),
         }
     }
 }
@@ -71,8 +74,8 @@ impl Value {
         Value::SimpleString("OK".into())
     }
 
-    pub fn error(msg: &'static str) -> Self {
-        Value::Error(msg.into())
+    pub fn error(msg: Bytes) -> Self {
+        Value::Error(msg)
     }
 }
 
@@ -83,7 +86,7 @@ pub struct RedisCommand {
 }
 
 impl RedisCommand {
-    pub fn new(inc_cmd: Value) -> Result<Self, RedisError> {
+    pub fn new(inc_cmd: &Value) -> Result<Self, RedisError> {
         let Value::Array(args) = inc_cmd else {
             return Err(RedisError::UnexpectedValue);
         };
@@ -142,6 +145,12 @@ pub enum RedisError {
     #[error("unsupported command - '{0}'")]
     UnsupportedCommand(String),
 
-    #[error("insufficient argument for '{0}' command")]
-    InsufficientArguments(CommandType),
+    #[error("insufficient arguments for '{0}'")]
+    InsufficientArugments(CommandType),
+
+    #[error("read lock error occurred")]
+    ReadLock,
+
+    #[error("write lock error occurred")]
+    WriteLock,
 }

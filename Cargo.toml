@@ -14,3 +14,4 @@ thiserror = "1.0.32"                                # error handling
 tokio = { version = "1.23.0", features = ["full"] } # async networking
 tokio-stream = "0.1.17"
 tokio-util = { version = "0.7.15", features = ["codec"] }
+uuid = { version = "1.17.0", features = ["v4"] }

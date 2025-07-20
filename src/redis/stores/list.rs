@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 
@@ -33,31 +33,40 @@ impl ListStore {
     }
 
     pub fn slice(&self, key: &Bytes, start: i64, end: i64) -> Option<&[Bytes]> {
-        if let Some(list) = self.map.get(key) {
-            let list_size = list.len();
-            let start = idx_calc(start, list_size);
-            let mut end = idx_calc(end, list_size);
+        let Some(list) = self.map.get(key) else {
+            return None;
+        };
 
-            if end >= list_size {
-                end = list_size - 1
-            }
+        let list_size = list.len();
+        let start = idx_calc(start, list_size);
+        let mut end = idx_calc(end, list_size);
 
-            if start > end || start >= list.len() {
-                return None;
-            }
-
-            return Some(&list[start..=end]);
+        if end >= list_size {
+            end = list_size - 1
         }
 
-        None
+        if start > end || start >= list.len() {
+            return None;
+        }
+
+        Some(&list[start..=end])
     }
 
     pub fn remove(&mut self, key: &Bytes, to_remove: usize) -> Option<Vec<Bytes>> {
-        if let Some(list) = self.map.get_mut(key) {
-            let sub_list: Vec<Bytes> = list.drain(..to_remove).collect();
-            return Some(sub_list);
+        let Some(list) = self.map.get_mut(key) else {
+            return None;
+        };
+
+        if list.is_empty() {
+            return Some(Vec::new());
         }
 
+        let sub_list: Vec<Bytes> = list.drain(..to_remove).collect();
+
+        Some(sub_list)
+    }
+
+    pub fn blocking_remove(&mut self, keys: &[Bytes], timeout: f64) -> Option<Bytes> {
         None
     }
 }

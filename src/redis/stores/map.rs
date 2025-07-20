@@ -39,7 +39,7 @@ impl MapStore {
         }
     }
 
-    pub fn get(&mut self, key: &Bytes) -> Option<&Bytes> {
+    pub fn get(&self, key: &Bytes) -> Option<&Bytes> {
         let Some(value) = self.map.get(key) else {
             return None;
         };
@@ -94,7 +94,7 @@ mod map_store_tests {
     #[test]
     fn store_test() -> Result<(), RedisError> {
         let mut ms = MapStore::new();
-        ms.set("hello".into(), "there".into(), None)?;
+        ms.set(&"hello".into(), &"there".into(), None)?;
         assert!(ms.get(&"hello".into()).is_some());
         assert!(ms.get(&"not present".into()).is_none());
 
@@ -104,7 +104,7 @@ mod map_store_tests {
     #[test]
     fn store_expired_values() -> Result<(), RedisError> {
         let mut ms = MapStore::new();
-        ms.set("hello".into(), "there".into(), Some("200".into()))?;
+        ms.set(&"hello".into(), &"there".into(), Some("200".into()))?;
         assert!(ms.get(&"hello".into()).is_some());
         std::thread::sleep(Duration::from_millis(300));
         assert!(ms.get(&"hello".into()).is_none());

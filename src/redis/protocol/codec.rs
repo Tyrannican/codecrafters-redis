@@ -173,7 +173,6 @@ fn write_value(value: Value, dst: &mut BytesMut) {
             dst.extend_from_slice(&e);
             dst.extend_from_slice(b"\r\n");
         }
-        _ => todo!(),
     }
 }
 
