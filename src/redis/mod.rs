@@ -130,15 +130,20 @@ impl WorkerTask {
 
                 let mut size = 0;
                 let key = &request.args[0];
-                let mut store = self.store.list_writer()?;
+                {
+                    let mut store = self.store.list_writer()?;
 
-                for value in request.args[1..].iter() {
-                    size = store.append(&self.client_id, key, value);
+                    for value in request.args[1..].iter() {
+                        size = store.append(key, value);
+                    }
                 }
 
-                dbg!("updated list");
-                // self.store.notify_client(key.clone()).await?;
-                dbg!("notified client");
+                if let Some(sender) = self.store.client_sender(&key)? {
+                    sender
+                        .send(key.clone())
+                        .await
+                        .map_err(|_| RedisError::ChannelSendError)?;
+                }
 
                 response.push(Value::Integer(size as i64));
             }
@@ -150,7 +155,7 @@ impl WorkerTask {
                 let mut store = self.store.list_writer()?;
 
                 for value in request.args[1..].iter() {
-                    size = store.prepend(&self.client_id, key, value);
+                    size = store.prepend(key, value);
                 }
 
                 response.push(Value::Integer(size as i64));
@@ -217,13 +222,20 @@ impl WorkerTask {
                 let keys = &request.args[..&request.args.len() - 1];
                 let timeout = &request.args.last().unwrap();
                 let (tx, rx) = kanal::unbounded_async::<Bytes>();
-                let notice =
-                    self.store
-                        .register_interest(self.client_id.clone(), keys, tx.clone())?;
+                self.store
+                    .register_interest(self.client_id.clone(), keys, tx.clone())?;
 
                 let timeout = bytes_to_float(timeout)?;
                 if timeout == 0.0 {
-                    rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
+                    let key = rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
+                    let mut writer = self.store.list_writer()?;
+                    match writer.remove_single(&key) {
+                        Some(value) => response.push(Value::Array(vec![
+                            Value::String(key.clone()),
+                            Value::String(value),
+                        ])),
+                        None => response.push(Value::NullString),
+                    }
                 }
 
                 self.store.unregister_interest(&self.client_id)?;

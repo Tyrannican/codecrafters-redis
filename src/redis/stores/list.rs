@@ -1,8 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::mpsc::{channel, Receiver, Sender},
-    time::{Duration, Instant},
-};
+use std::collections::BTreeMap;
 
 use bytes::Bytes;
 
@@ -24,14 +20,14 @@ impl ListStore {
         }
     }
 
-    pub fn append(&mut self, id: &Bytes, key: &Bytes, element: &Bytes) -> usize {
+    pub fn append(&mut self, key: &Bytes, element: &Bytes) -> usize {
         let entry = self.map.entry(key.clone()).or_insert(Vec::new());
         entry.push(element.clone());
 
         entry.len()
     }
 
-    pub fn prepend(&mut self, id: &Bytes, key: &Bytes, element: &Bytes) -> usize {
+    pub fn prepend(&mut self, key: &Bytes, element: &Bytes) -> usize {
         let entry = self.map.entry(key.clone()).or_insert(Vec::new());
         entry.insert(0, element.clone());
         entry.len()
@@ -77,10 +73,6 @@ impl ListStore {
         };
 
         Some(list.remove(0))
-    }
-
-    pub async fn blocking_remove(&self, id: &Bytes) -> Option<Bytes> {
-        None
     }
 }
 

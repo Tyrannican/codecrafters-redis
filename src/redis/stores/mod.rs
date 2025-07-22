@@ -9,7 +9,7 @@ use kanal::AsyncSender;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Condvar, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
 
@@ -20,8 +20,6 @@ struct Interest {
     timestamp: Instant,
     sender: AsyncSender<Bytes>,
 }
-
-pub type Notice = Arc<(Mutex<Option<Bytes>>, Condvar)>;
 
 pub struct Notifier {
     clients: BTreeMap<Bytes, Interest>,
@@ -49,21 +47,17 @@ impl Notifier {
         self.clients.remove(id);
     }
 
-    pub async fn notify_client(&self, msg: Bytes) -> Result<(), RedisError> {
+    pub fn client_sender(&self, msg: &Bytes) -> Option<AsyncSender<Bytes>> {
         match self.longest_waiting_client() {
             Some(client) => {
-                if client.interest.contains(&msg) {
-                    client
-                        .sender
-                        .send(msg)
-                        .await
-                        .map_err(|_| RedisError::ChannelSendError)?;
+                if client.interest.contains(msg) {
+                    return Some(client.sender.clone());
                 }
-            }
-            None => {}
-        }
 
-        Ok(())
+                None
+            }
+            None => None,
+        }
     }
 
     fn longest_waiting_client(&self) -> Option<&Interest> {
@@ -112,9 +106,9 @@ impl GlobalStore {
         Ok(())
     }
 
-    pub async fn notify_client(&self, msg: Bytes) -> Result<(), RedisError> {
+    pub fn client_sender(&self, msg: &Bytes) -> Result<Option<AsyncSender<Bytes>>, RedisError> {
         let notifier = self.notifier.read().map_err(|_| RedisError::ReadLock)?;
-        notifier.notify_client(msg).await
+        Ok(notifier.client_sender(msg))
     }
 
     pub fn map_reader(&self) -> Result<RwLockReadGuard<'_, MapStore>, RedisError> {
