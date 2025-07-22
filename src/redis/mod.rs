@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 use kanal::{AsyncReceiver, AsyncSender};
@@ -235,6 +235,26 @@ impl WorkerTask {
                             Value::String(value),
                         ])),
                         None => response.push(Value::NullString),
+                    }
+                } else {
+                    match tokio::time::timeout(
+                        Duration::from_millis((timeout * 1000.0) as u64),
+                        rx.recv(),
+                    )
+                    .await
+                    {
+                        Ok(Ok(key)) => {
+                            let mut writer = self.store.list_writer()?;
+
+                            match writer.remove_single(&key) {
+                                Some(value) => response.push(Value::Array(vec![
+                                    Value::String(key.clone()),
+                                    Value::String(value),
+                                ])),
+                                None => response.push(Value::NullString),
+                            }
+                        }
+                        _ => response.push(Value::NullString),
                     }
                 }
 
