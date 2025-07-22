@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use kanal::{AsyncReceiver, AsyncSender};
@@ -10,16 +10,15 @@ mod stores;
 mod utils;
 
 use protocol::{CommandType, RedisCommand, RedisError, Value};
-use stores::{ListStore, MapStore};
-use utils::{bytes_to_integer, validate_args_len};
+use stores::GlobalStore;
+use utils::{bytes_to_float, bytes_to_integer, validate_args_len};
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
 pub struct Node {
     worker_count: usize,
     pool: BTreeMap<usize, JoinHandle<Result<(), RedisError>>>,
-    map_store: Arc<RwLock<MapStore>>,
-    list_store: Arc<RwLock<ListStore>>,
+    store: Arc<GlobalStore>,
 }
 
 impl Node {
@@ -27,36 +26,28 @@ impl Node {
         Self {
             worker_count,
             pool: BTreeMap::new(),
-            map_store: Arc::new(RwLock::new(MapStore::new())),
-            list_store: Arc::new(RwLock::new(ListStore::new())),
+            store: Arc::new(GlobalStore::new()),
         }
     }
 
     pub fn start(&mut self, receiver: AsyncReceiver<Request>) {
         for i in 0..self.worker_count {
             let rx = receiver.clone();
-            let map_store = Arc::clone(&self.map_store);
-            let list_store = Arc::clone(&self.list_store);
+            let store = Arc::clone(&self.store);
 
-            let handle =
-                tokio::task::spawn(async move { worker_fn(rx, map_store, list_store).await });
+            let handle = tokio::task::spawn(async move { worker_fn(rx, store).await });
 
             self.pool.insert(i, handle);
         }
     }
 }
 
-async fn worker_fn(
-    rx: AsyncReceiver<Request>,
-    map_store: Arc<RwLock<MapStore>>,
-    list_store: Arc<RwLock<ListStore>>,
-) -> Result<(), RedisError> {
+async fn worker_fn(rx: AsyncReceiver<Request>, store: Arc<GlobalStore>) -> Result<(), RedisError> {
     while let Ok((req, client_id, responder)) = rx.recv().await {
         let mut task = WorkerTask {
             request: req,
             client_id,
-            map_store: Arc::clone(&map_store),
-            list_store: Arc::clone(&list_store),
+            store: Arc::clone(&store),
         };
 
         match task.process_request().await {
@@ -87,8 +78,7 @@ async fn worker_fn(
 struct WorkerTask {
     request: Value,
     client_id: Bytes,
-    map_store: Arc<RwLock<MapStore>>,
-    list_store: Arc<RwLock<ListStore>>,
+    store: Arc<GlobalStore>,
 }
 
 impl WorkerTask {
@@ -108,7 +98,7 @@ impl WorkerTask {
                 validate_args_len(&request, 1)?;
 
                 let key = &request.args[0];
-                let store = self.map_store.read().map_err(|_| RedisError::ReadLock)?;
+                let store = self.store.map_reader()?;
 
                 match store.get(key) {
                     Some(value) => {
@@ -128,7 +118,7 @@ impl WorkerTask {
                     None
                 };
 
-                let mut store = self.map_store.write().map_err(|_| RedisError::WriteLock)?;
+                let mut store = self.store.map_writer()?;
 
                 match store.set(key, value, ttl) {
                     Ok(_) => response.push(Value::ok()),
@@ -140,11 +130,15 @@ impl WorkerTask {
 
                 let mut size = 0;
                 let key = &request.args[0];
-                let mut store = self.list_store.write().map_err(|_| RedisError::WriteLock)?;
+                let mut store = self.store.list_writer()?;
 
                 for value in request.args[1..].iter() {
                     size = store.append(&self.client_id, key, value);
                 }
+
+                dbg!("updated list");
+                // self.store.notify_client(key.clone()).await?;
+                dbg!("notified client");
 
                 response.push(Value::Integer(size as i64));
             }
@@ -153,7 +147,7 @@ impl WorkerTask {
 
                 let mut size = 0;
                 let key = &request.args[0];
-                let mut store = self.list_store.write().map_err(|_| RedisError::WriteLock)?;
+                let mut store = self.store.list_writer()?;
 
                 for value in request.args[1..].iter() {
                     size = store.prepend(&self.client_id, key, value);
@@ -167,8 +161,8 @@ impl WorkerTask {
                 let key = &request.args[0];
                 let start = bytes_to_integer(&request.args[1])?;
                 let end = bytes_to_integer(&request.args[2])?;
-                let store = self.list_store.read().map_err(|_| RedisError::ReadLock)?;
 
+                let store = self.store.list_reader()?;
                 match store.slice(key, start, end) {
                     Some(slice) => {
                         let values = slice
@@ -185,7 +179,7 @@ impl WorkerTask {
                 validate_args_len(&request, 1)?;
 
                 let key = &request.args[0];
-                let store = self.list_store.read().map_err(|_| RedisError::ReadLock)?;
+                let store = self.store.list_reader()?;
 
                 let size = store.len(key);
 
@@ -200,7 +194,7 @@ impl WorkerTask {
                     Some(total) => bytes_to_integer(total)? as usize,
                 };
 
-                let mut store = self.list_store.write().map_err(|_| RedisError::WriteLock)?;
+                let mut store = self.store.list_writer()?;
 
                 match store.remove(key, to_remove) {
                     Some(elements) => match elements.len() {
@@ -221,6 +215,18 @@ impl WorkerTask {
             CommandType::BLPop => {
                 validate_args_len(&request, 2)?;
                 let keys = &request.args[..&request.args.len() - 1];
+                let timeout = &request.args.last().unwrap();
+                let (tx, rx) = kanal::unbounded_async::<Bytes>();
+                let notice =
+                    self.store
+                        .register_interest(self.client_id.clone(), keys, tx.clone())?;
+
+                let timeout = bytes_to_float(timeout)?;
+                if timeout == 0.0 {
+                    rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
+                }
+
+                self.store.unregister_interest(&self.client_id)?;
             }
         }
 
