@@ -10,6 +10,11 @@ pub fn bytes_to_integer<'a>(b: &'a Bytes) -> Result<i64, RedisError> {
     str.parse::<i64>().map_err(|_| RedisError::IntegerParse)
 }
 
+pub fn bytes_to_float<'a>(b: &'a Bytes) -> Result<f64, RedisError> {
+    let str = bytes_to_str(b)?;
+    str.parse::<f64>().map_err(|_| RedisError::IntegerParse)
+}
+
 pub fn validate_args_len(req: &RedisCommand, len: usize) -> Result<(), RedisError> {
     if req.args.len() < len {
         return Err(RedisError::InsufficientArugments(req.cmd));

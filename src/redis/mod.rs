@@ -143,7 +143,7 @@ impl WorkerTask {
                 let mut store = self.list_store.write().map_err(|_| RedisError::WriteLock)?;
 
                 for value in request.args[1..].iter() {
-                    size = store.append(key, value);
+                    size = store.append(&self.client_id, key, value);
                 }
 
                 response.push(Value::Integer(size as i64));
@@ -156,7 +156,7 @@ impl WorkerTask {
                 let mut store = self.list_store.write().map_err(|_| RedisError::WriteLock)?;
 
                 for value in request.args[1..].iter() {
-                    size = store.prepend(key, value);
+                    size = store.prepend(&self.client_id, key, value);
                 }
 
                 response.push(Value::Integer(size as i64));
@@ -218,7 +218,10 @@ impl WorkerTask {
                     None => response.push(Value::NullString),
                 }
             }
-            CommandType::BLPop => {}
+            CommandType::BLPop => {
+                validate_args_len(&request, 2)?;
+                let keys = &request.args[..&request.args.len() - 1];
+            }
         }
 
         Ok(response)
