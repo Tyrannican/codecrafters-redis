@@ -221,9 +221,7 @@ impl WorkerTask {
                 validate_args_len(&request, 2)?;
                 let keys = &request.args[..&request.args.len() - 1];
                 let timeout = &request.args.last().unwrap();
-                let (tx, rx) = kanal::unbounded_async::<Bytes>();
-                self.store
-                    .register_interest(self.client_id.clone(), keys, tx.clone())?;
+                let rx = self.store.register_interest(self.client_id.clone(), keys)?;
 
                 let timeout = bytes_to_float(timeout)?;
                 if timeout == 0.0 {

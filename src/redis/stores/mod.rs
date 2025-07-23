@@ -5,7 +5,7 @@ use bytes::Bytes;
 use list::ListStore;
 use map::MapStore;
 
-use kanal::AsyncSender;
+use kanal::{AsyncReceiver, AsyncSender};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -32,7 +32,8 @@ impl Notifier {
         }
     }
 
-    pub fn register_client(&mut self, id: Bytes, interest: &[Bytes], sender: AsyncSender<Bytes>) {
+    pub fn register_client(&mut self, id: Bytes, interest: &[Bytes]) -> AsyncReceiver<Bytes> {
+        let (sender, receiver) = kanal::unbounded_async();
         self.clients.insert(
             id,
             Interest {
@@ -41,6 +42,8 @@ impl Notifier {
                 sender,
             },
         );
+
+        receiver
     }
 
     pub fn unregister_client(&mut self, id: &Bytes) {
@@ -92,12 +95,11 @@ impl GlobalStore {
         &self,
         id: Bytes,
         interest: &[Bytes],
-        sender: AsyncSender<Bytes>,
-    ) -> Result<(), RedisError> {
+    ) -> Result<AsyncReceiver<Bytes>, RedisError> {
         let mut notifier = self.notifier.write().map_err(|_| RedisError::WriteLock)?;
-        notifier.register_client(id, interest, sender);
+        let receiver = notifier.register_client(id, interest);
 
-        Ok(())
+        Ok(receiver)
     }
 
     pub fn unregister_interest(&self, id: &Bytes) -> Result<(), RedisError> {
