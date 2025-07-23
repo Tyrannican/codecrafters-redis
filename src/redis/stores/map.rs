@@ -39,10 +39,12 @@ impl MapStore {
         }
     }
 
+    pub fn contains(&self, key: &Bytes) -> bool {
+        self.map.contains_key(key)
+    }
+
     pub fn get(&self, key: &Bytes) -> Option<&Bytes> {
-        let Some(value) = self.map.get(key) else {
-            return None;
-        };
+        let value = self.map.get(key)?;
 
         // TODO: Cleanup of expired values
         if value.expired() {

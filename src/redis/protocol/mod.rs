@@ -18,6 +18,7 @@ pub enum CommandType {
     LLen,
     LPop,
     BLPop,
+    Type,
 }
 
 impl CommandType {
@@ -34,6 +35,7 @@ impl CommandType {
             "llen" => Ok(Self::LLen),
             "lpop" => Ok(Self::LPop),
             "blpop" => Ok(Self::BLPop),
+            "type" => Ok(Self::Type),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -53,6 +55,7 @@ impl std::fmt::Display for CommandType {
             Self::LLen => write!(f, "llen"),
             Self::LPop => write!(f, "lpop"),
             Self::BLPop => write!(f, "blpop"),
+            Self::Type => write!(f, "type"),
         }
     }
 }
@@ -92,14 +95,14 @@ impl RedisCommand {
         };
         assert!(!args.is_empty());
 
-        let Some(Value::String(cmd_bytes)) = args.get(0) else {
+        let Some(Value::String(cmd_bytes)) = args.first() else {
             return Err(RedisError::UnexpectedValue);
         };
 
         let cmd_type = CommandType::from_bytes(cmd_bytes)?;
         let args = if args.len() > 1 {
             args[1..]
-                .into_iter()
+                .iter()
                 .map(|v| {
                     let Value::String(inner) = v else {
                         todo!();

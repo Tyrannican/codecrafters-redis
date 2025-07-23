@@ -33,11 +33,11 @@ enum InterimValue {
 }
 
 impl InterimValue {
-    fn to_value(self, buf: &Bytes) -> Value {
+    fn into_value(self, buf: &Bytes) -> Value {
         match self {
             Self::String(s) => Value::String(s.as_bytes(buf)),
             Self::Array(arr) => {
-                Value::Array(arr.into_iter().map(|item| item.to_value(buf)).collect())
+                Value::Array(arr.into_iter().map(|item| item.into_value(buf)).collect())
             }
             Self::Integer(int) => Value::Integer(int),
             Self::NullString => Value::NullString,
@@ -190,7 +190,7 @@ impl Decoder for RespProtocol {
         match parse(src, 0)? {
             Some((pos, value)) => {
                 let data = src.split_to(pos);
-                Ok(Some(value.to_value(&data.freeze())))
+                Ok(Some(value.into_value(&data.freeze())))
             }
             None => Ok(None),
         }

@@ -20,23 +20,25 @@ impl ListStore {
         }
     }
 
+    pub fn contains(&self, key: &Bytes) -> bool {
+        self.map.contains_key(key)
+    }
+
     pub fn append(&mut self, key: &Bytes, element: &Bytes) -> usize {
-        let entry = self.map.entry(key.clone()).or_insert(Vec::new());
+        let entry = self.map.entry(key.clone()).or_default();
         entry.push(element.clone());
 
         entry.len()
     }
 
     pub fn prepend(&mut self, key: &Bytes, element: &Bytes) -> usize {
-        let entry = self.map.entry(key.clone()).or_insert(Vec::new());
+        let entry = self.map.entry(key.clone()).or_default();
         entry.insert(0, element.clone());
         entry.len()
     }
 
     pub fn slice(&self, key: &Bytes, start: i64, end: i64) -> Option<&[Bytes]> {
-        let Some(list) = self.map.get(key) else {
-            return None;
-        };
+        let list = self.map.get(key)?;
 
         let list_size = list.len();
         let start = idx_calc(start, list_size);
@@ -54,9 +56,7 @@ impl ListStore {
     }
 
     pub fn remove(&mut self, key: &Bytes, to_remove: usize) -> Option<Vec<Bytes>> {
-        let Some(list) = self.map.get_mut(key) else {
-            return None;
-        };
+        let list = self.map.get_mut(key)?;
 
         if list.is_empty() {
             return Some(Vec::new());
@@ -68,10 +68,7 @@ impl ListStore {
     }
 
     pub fn remove_single(&mut self, key: &Bytes) -> Option<Bytes> {
-        let Some(list) = self.map.get_mut(key) else {
-            return None;
-        };
-
+        let list = self.map.get_mut(key)?;
         Some(list.remove(0))
     }
 }

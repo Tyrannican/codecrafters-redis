@@ -138,7 +138,7 @@ impl WorkerTask {
                     }
                 }
 
-                if let Some(sender) = self.store.client_sender(&key)? {
+                if let Some(sender) = self.store.client_sender(key)? {
                     sender
                         .send(key.clone())
                         .await
@@ -171,7 +171,7 @@ impl WorkerTask {
                 match store.slice(key, start, end) {
                     Some(slice) => {
                         let values = slice
-                            .into_iter()
+                            .iter()
                             .map(|v| Value::String(v.clone()))
                             .collect::<Vec<Value>>();
 
@@ -208,7 +208,7 @@ impl WorkerTask {
                         _ => {
                             let values = elements
                                 .into_iter()
-                                .map(|v| Value::String(v))
+                                .map(Value::String)
                                 .collect::<Vec<Value>>();
 
                             response.push(Value::Array(values));
@@ -257,6 +257,13 @@ impl WorkerTask {
                 }
 
                 self.store.unregister_interest(&self.client_id)?;
+            }
+
+            CommandType::Type => {
+                validate_args_len(&request, 1)?;
+                let key = &request.args[0];
+                let key_type = self.store.key_type(key)?;
+                response.push(Value::SimpleString(key_type.into()));
             }
         }
 

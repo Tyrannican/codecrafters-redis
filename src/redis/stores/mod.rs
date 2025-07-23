@@ -128,4 +128,18 @@ impl GlobalStore {
     pub fn list_writer(&self) -> Result<RwLockWriteGuard<'_, ListStore>, RedisError> {
         self.lists.write().map_err(|_| RedisError::WriteLock)
     }
+
+    pub fn key_type<'a>(&self, key: &Bytes) -> Result<&'a str, RedisError> {
+        let map = self.map_reader()?;
+        if map.contains(key) {
+            return Ok("string");
+        }
+
+        let list = self.list_reader()?;
+        if list.contains(key) {
+            return Ok("list");
+        }
+
+        Ok("none")
+    }
 }
