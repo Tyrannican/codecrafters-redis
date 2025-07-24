@@ -291,8 +291,13 @@ impl WorkerTask {
                 };
 
                 let mut store = self.store.stream_writer()?;
-                store.add_entry(stream_key, entry_id, values.as_deref());
-                response.push(Value::String(entry_id.clone()));
+                match store.add_entry(stream_key, entry_id, values.as_deref()) {
+                    Ok(entry_key) => response.push(Value::String(entry_key)),
+                    Err(e) => match e {
+                        RedisError::StreamError(se) => response.push(Value::Error(se.into())),
+                        _ => return Err(e),
+                    },
+                }
             }
         }
 

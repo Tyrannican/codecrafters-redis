@@ -160,12 +160,6 @@ pub enum RedisError {
     #[error("write lock error occurred")]
     WriteLock,
 
-    #[error("unexpected error occurred - '{0}'")]
-    UnexpectedError(String),
-
-    #[error("invalid stream entry id")]
-    InvalidStreamEntryId,
-
-    #[error("invalid stream entry timestamp provided - '{0}'")]
-    InvalidStreamEntryTimestamp(String),
+    #[error("stream error - '{0}'")]
+    StreamError(String),
 }
