@@ -26,6 +26,13 @@ impl StreamStore {
         self.map.contains_key(key)
     }
 
+    // TODO: Start here
+    pub fn validate_entry_id(&self, entry_key: &Bytes) {
+        if entry_key.len() == 1 && entry_key[0] == b'*' {
+            //
+        }
+    }
+
     pub fn add_entry<'a>(
         &mut self,
         stream_key: &'a Bytes,
