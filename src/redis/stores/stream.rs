@@ -51,13 +51,13 @@ fn autogenerate_entry_id() -> Bytes {
     format!("{now}-0").into()
 }
 
-// TODO: Start here
 pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes, RedisError> {
     let entry_id_str = bytes_to_str(entry_id)?;
     if entry_id_str == "*" {
         return Ok(autogenerate_entry_id());
     }
 
+    // TODO: Refactor into smaller entries
     match stream.last_entry() {
         Some(last) => {
             let Some((timestamp, seq)) = entry_id_str.split_once("-") else {
@@ -67,16 +67,16 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
                 todo!("error");
             };
 
+            let next_seq = l_seq
+                .parse::<usize>()
+                .map_err(|_| RedisError::NumberParse)?
+                + 1;
+
             if entry_id_str <= "0-0" {
                 return Err(RedisError::StreamError(
                     "ERR The ID specified in XADD must be greater than 0-0".to_string(),
                 ));
             }
-
-            let next_seq = l_seq
-                .parse::<usize>()
-                .map_err(|_| RedisError::NumberParse)?
-                + 1;
 
             if timestamp > l_timestamp {
                 if seq == "*" {
