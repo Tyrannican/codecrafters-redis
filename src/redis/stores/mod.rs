@@ -1,9 +1,11 @@
 pub mod list;
 pub mod map;
+pub mod stream;
 
 use bytes::Bytes;
 use list::ListStore;
 use map::MapStore;
+use stream::StreamStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
 
@@ -80,6 +82,7 @@ pub struct GlobalStore {
     notifier: RwLock<Notifier>,
     maps: RwLock<MapStore>,
     lists: RwLock<ListStore>,
+    streams: RwLock<StreamStore>,
 }
 
 impl GlobalStore {
@@ -88,6 +91,7 @@ impl GlobalStore {
             notifier: RwLock::new(Notifier::new()),
             maps: RwLock::new(MapStore::new()),
             lists: RwLock::new(ListStore::new()),
+            streams: RwLock::new(StreamStore::new()),
         }
     }
 
@@ -129,6 +133,14 @@ impl GlobalStore {
         self.lists.write().map_err(|_| RedisError::WriteLock)
     }
 
+    pub fn stream_reader(&self) -> Result<RwLockReadGuard<'_, StreamStore>, RedisError> {
+        self.streams.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn stream_writer(&self) -> Result<RwLockWriteGuard<'_, StreamStore>, RedisError> {
+        self.streams.write().map_err(|_| RedisError::WriteLock)
+    }
+
     pub fn key_type<'a>(&self, key: &Bytes) -> Result<&'a str, RedisError> {
         let map = self.map_reader()?;
         if map.contains(key) {
@@ -138,6 +150,11 @@ impl GlobalStore {
         let list = self.list_reader()?;
         if list.contains(key) {
             return Ok("list");
+        }
+
+        let stream = self.stream_reader()?;
+        if stream.contains(key) {
+            return Ok("stream");
         }
 
         Ok("none")

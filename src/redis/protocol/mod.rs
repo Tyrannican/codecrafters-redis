@@ -19,6 +19,7 @@ pub enum CommandType {
     LPop,
     BLPop,
     Type,
+    XAdd,
 }
 
 impl CommandType {
@@ -36,6 +37,7 @@ impl CommandType {
             "lpop" => Ok(Self::LPop),
             "blpop" => Ok(Self::BLPop),
             "type" => Ok(Self::Type),
+            "xadd" => Ok(Self::XAdd),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -56,6 +58,7 @@ impl std::fmt::Display for CommandType {
             Self::LPop => write!(f, "lpop"),
             Self::BLPop => write!(f, "blpop"),
             Self::Type => write!(f, "type"),
+            Self::XAdd => write!(f, "xadd"),
         }
     }
 }
@@ -124,8 +127,8 @@ impl RedisCommand {
 
 #[derive(Debug, Error)]
 pub enum RedisError {
-    #[error("failed to parse integer")]
-    IntegerParse,
+    #[error("failed to parse number")]
+    NumberParse,
 
     #[error("invalid size parameter detected {0}")]
     InvalidSize(i64),
@@ -156,4 +159,13 @@ pub enum RedisError {
 
     #[error("write lock error occurred")]
     WriteLock,
+
+    #[error("unexpected error occurred - '{0}'")]
+    UnexpectedError(String),
+
+    #[error("invalid stream entry id")]
+    InvalidStreamEntryId,
+
+    #[error("invalid stream entry timestamp provided - '{0}'")]
+    InvalidStreamEntryTimestamp(String),
 }

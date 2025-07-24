@@ -11,7 +11,7 @@ mod utils;
 
 use protocol::{CommandType, RedisCommand, RedisError, Value};
 use stores::GlobalStore;
-use utils::{bytes_to_float, bytes_to_integer, validate_args_len};
+use utils::{bytes_to_number, validate_args_len};
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
@@ -164,8 +164,8 @@ impl WorkerTask {
                 validate_args_len(&request, 3)?;
 
                 let key = &request.args[0];
-                let start = bytes_to_integer(&request.args[1])?;
-                let end = bytes_to_integer(&request.args[2])?;
+                let start = bytes_to_number(&request.args[1])?;
+                let end = bytes_to_number(&request.args[2])?;
 
                 let store = self.store.list_reader()?;
                 match store.slice(key, start, end) {
@@ -196,7 +196,7 @@ impl WorkerTask {
                 let key = &request.args[0];
                 let to_remove = match request.args.get(1) {
                     None => 1,
-                    Some(total) => bytes_to_integer(total)? as usize,
+                    Some(total) => bytes_to_number::<usize>(total)?,
                 };
 
                 let mut store = self.store.list_writer()?;
@@ -223,7 +223,7 @@ impl WorkerTask {
                 let timeout = &request.args.last().unwrap();
                 let rx = self.store.register_interest(self.client_id.clone(), keys)?;
 
-                let timeout = bytes_to_float(timeout)?;
+                let timeout = bytes_to_number::<f64>(timeout)?;
                 if timeout == 0.0 {
                     let key = rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
                     let mut writer = self.store.list_writer()?;
@@ -264,6 +264,35 @@ impl WorkerTask {
                 let key = &request.args[0];
                 let key_type = self.store.key_type(key)?;
                 response.push(Value::SimpleString(key_type.into()));
+            }
+            CommandType::XAdd => {
+                validate_args_len(&request, 2)?;
+
+                let stream_key = &request.args[0];
+                let entry_id = &request.args[1];
+
+                let values = if request.args.len() > 2 {
+                    if &request.args[2..].len() % 2 != 0 {
+                        response.push(Value::error(
+                            "need even number of keys and values for stream".into(),
+                        ));
+
+                        return Ok(response);
+                    }
+
+                    let pairs: Vec<(Bytes, Bytes)> = request.args[2..]
+                        .chunks(2)
+                        .map(|p| (p[0].clone(), p[1].clone()))
+                        .collect();
+
+                    Some(pairs)
+                } else {
+                    None
+                };
+
+                let mut store = self.store.stream_writer()?;
+                store.add_entry(stream_key, entry_id, values.as_deref());
+                response.push(Value::String(entry_id.clone()));
             }
         }
 

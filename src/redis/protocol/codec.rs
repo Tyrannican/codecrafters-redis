@@ -81,9 +81,9 @@ fn word(buf: &BytesMut, pos: usize) -> Option<(usize, Phrase)> {
 fn int(buf: &BytesMut, pos: usize) -> Result<Option<(usize, i64)>, RedisError> {
     match word(buf, pos) {
         Some((next, phrase)) => {
-            let s = str::from_utf8(phrase.as_slice(buf)).map_err(|_| RedisError::IntegerParse)?;
+            let s = str::from_utf8(phrase.as_slice(buf)).map_err(|_| RedisError::NumberParse)?;
 
-            let integer = s.parse().map_err(|_| RedisError::IntegerParse)?;
+            let integer = s.parse().map_err(|_| RedisError::NumberParse)?;
 
             Ok(Some((next, integer)))
         }

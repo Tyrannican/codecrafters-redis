@@ -62,9 +62,7 @@ impl MapStore {
     ) -> Result<(), RedisError> {
         let ttl = if let Some(ex) = ttl {
             let ms_str = str::from_utf8(&ex).map_err(|_| RedisError::StringConversion)?;
-            let ms = ms_str
-                .parse::<u64>()
-                .map_err(|_| RedisError::IntegerParse)?;
+            let ms = ms_str.parse::<u64>().map_err(|_| RedisError::NumberParse)?;
 
             Some(Duration::from_millis(ms))
         } else {
