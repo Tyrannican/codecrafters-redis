@@ -56,22 +56,12 @@ impl StreamStore {
 
         let mut values = Vec::new();
         for (entry_id, entry) in stream.iter() {
-            match start_id_str {
-                "-" => {}
-                _ => {
-                    if entry_id < start_id {
-                        continue;
-                    }
-                }
+            if start_id_str != "-" && entry_id < start_id {
+                continue;
             }
 
-            match end_id_str {
-                "+" => {}
-                _ => {
-                    if entry_id > end_id {
-                        continue;
-                    }
-                }
+            if end_id_str != "+" && entry_id > end_id {
+                continue;
             }
 
             let mut entry_vec = Vec::new();

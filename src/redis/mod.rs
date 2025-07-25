@@ -323,6 +323,10 @@ impl WorkerTask {
 
                 response.push(Value::Array(stream_values));
             }
+
+            CommandType::XRead => {
+                validate_args_len(&request, 3)?;
+            }
         }
 
         Ok(response)
