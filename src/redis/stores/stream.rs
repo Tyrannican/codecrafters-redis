@@ -40,6 +40,35 @@ impl StreamStore {
 
         Ok(entry_key)
     }
+
+    pub fn xrange<'a>(
+        &'a self,
+        stream_key: &Bytes,
+        start_id: &Bytes,
+        end_id: &Bytes,
+    ) -> Result<Vec<Vec<&'a Bytes>>, RedisError> {
+        let Some(stream) = self.map.get(stream_key) else {
+            todo!("error");
+        };
+
+        let mut values = Vec::new();
+        for (entry_id, entry) in stream.iter() {
+            let mut entry_vec = Vec::new();
+            if entry_id < start_id || entry_id > end_id {
+                continue;
+            }
+
+            entry_vec.push(entry_id);
+            for (key, value) in entry.iter() {
+                entry_vec.push(key);
+                entry_vec.push(value);
+            }
+
+            values.push(entry_vec);
+        }
+
+        Ok(values)
+    }
 }
 
 fn autogenerate_entry_id() -> Bytes {
@@ -59,7 +88,7 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
     }
 
     if entry_id_str == "0-0" {
-        return Err(RedisError::StreamError(
+        return Err(RedisError::StreamIdError(
             "ERR The ID specified in XADD must be greater than 0-0".to_string(),
         ));
     }
@@ -75,7 +104,7 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
                 .expect("this should be a valid entry id");
 
             if l_timestamp > timestamp {
-                return Err(RedisError::StreamError(
+                return Err(RedisError::StreamIdError(
                     "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()
                 ));
             }
@@ -94,7 +123,7 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
             } else {
                 if timestamp == l_timestamp {
                     if seq <= l_seq {
-                        return Err(RedisError::StreamError(
+                        return Err(RedisError::StreamIdError(
                             "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()
                         ));
                     }

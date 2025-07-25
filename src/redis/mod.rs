@@ -294,10 +294,34 @@ impl WorkerTask {
                 match store.add_entry(stream_key, entry_id, values.as_deref()) {
                     Ok(entry_key) => response.push(Value::String(entry_key)),
                     Err(e) => match e {
-                        RedisError::StreamError(se) => response.push(Value::Error(se.into())),
+                        RedisError::StreamIdError(se) => response.push(Value::Error(se.into())),
                         _ => return Err(e),
                     },
                 }
+            }
+
+            CommandType::XRange => {
+                validate_args_len(&request, 3)?;
+
+                let key = &request.args[0];
+                let start = &request.args[1];
+                let end = &request.args[2];
+                let store = self.store.stream_reader()?;
+                let values = store.xrange(key, start, end)?;
+
+                let mut stream_values = Vec::new();
+                for v in values {
+                    let id = Value::String(v[0].clone());
+                    let items: Vec<Value> = v[1..]
+                        .iter()
+                        .cloned()
+                        .map(|e| Value::String(e.clone()))
+                        .collect();
+
+                    stream_values.push(Value::Array(vec![id, Value::Array(items)]));
+                }
+
+                response.push(Value::Array(stream_values));
             }
         }
 

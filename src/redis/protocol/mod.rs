@@ -20,6 +20,7 @@ pub enum CommandType {
     BLPop,
     Type,
     XAdd,
+    XRange,
 }
 
 impl CommandType {
@@ -38,6 +39,7 @@ impl CommandType {
             "blpop" => Ok(Self::BLPop),
             "type" => Ok(Self::Type),
             "xadd" => Ok(Self::XAdd),
+            "xrange" => Ok(Self::XRange),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -59,6 +61,7 @@ impl std::fmt::Display for CommandType {
             Self::BLPop => write!(f, "blpop"),
             Self::Type => write!(f, "type"),
             Self::XAdd => write!(f, "xadd"),
+            Self::XRange => write!(f, "xrange"),
         }
     }
 }
@@ -161,5 +164,5 @@ pub enum RedisError {
     WriteLock,
 
     #[error("stream error - '{0}'")]
-    StreamError(String),
+    StreamIdError(String),
 }
