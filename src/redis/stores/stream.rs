@@ -51,13 +51,30 @@ impl StreamStore {
             todo!("error");
         };
 
+        let start_id_str = bytes_to_str(start_id)?;
+        let end_id_str = bytes_to_str(end_id)?;
+
         let mut values = Vec::new();
         for (entry_id, entry) in stream.iter() {
-            let mut entry_vec = Vec::new();
-            if entry_id < start_id || entry_id > end_id {
-                continue;
+            match start_id_str {
+                "-" => {}
+                _ => {
+                    if entry_id < start_id {
+                        continue;
+                    }
+                }
             }
 
+            match end_id_str {
+                "+" => {}
+                _ => {
+                    if entry_id > end_id {
+                        continue;
+                    }
+                }
+            }
+
+            let mut entry_vec = Vec::new();
             entry_vec.push(entry_id);
             for (key, value) in entry.iter() {
                 entry_vec.push(key);
