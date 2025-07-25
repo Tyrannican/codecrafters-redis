@@ -51,60 +51,68 @@ fn autogenerate_entry_id() -> Bytes {
     format!("{now}-0").into()
 }
 
+// TODO: Refactor this mess...
 pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes, RedisError> {
     let entry_id_str = bytes_to_str(entry_id)?;
     if entry_id_str == "*" {
         return Ok(autogenerate_entry_id());
     }
 
-    // TODO: Refactor into smaller entries
+    if entry_id_str == "0-0" {
+        return Err(RedisError::StreamError(
+            "ERR The ID specified in XADD must be greater than 0-0".to_string(),
+        ));
+    }
+
+    let (timestamp, seq) = entry_id_str
+        .split_once("-")
+        .expect("this should be a valid id");
+
     match stream.last_entry() {
         Some(last) => {
-            let Some((timestamp, seq)) = entry_id_str.split_once("-") else {
-                todo!("error");
-            };
-            let Some((l_timestamp, l_seq)) = bytes_to_str(last.key())?.split_once("-") else {
-                todo!("error");
-            };
+            let (l_timestamp, l_seq) = bytes_to_str(last.key())?
+                .split_once("-")
+                .expect("this should be a valid entry id");
 
-            let next_seq = l_seq
-                .parse::<usize>()
-                .map_err(|_| RedisError::NumberParse)?
-                + 1;
-
-            if entry_id_str <= "0-0" {
+            if l_timestamp > timestamp {
                 return Err(RedisError::StreamError(
-                    "ERR The ID specified in XADD must be greater than 0-0".to_string(),
+                    "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()
                 ));
             }
 
-            if timestamp > l_timestamp {
-                if seq == "*" {
+            if seq == "*" {
+                if timestamp == l_timestamp {
+                    let next_seq = l_seq
+                        .parse::<usize>()
+                        .map_err(|_| RedisError::NumberParse)?
+                        + 1;
+
                     return Ok(format!("{timestamp}-{next_seq}").into());
                 }
 
-                return Ok(entry_id.clone());
-            } else if timestamp == l_timestamp {
-                if seq == "*" {
-                    return Ok(format!("{timestamp}-{next_seq}").into());
-                }
-                if seq > l_seq {
-                    return Ok(entry_id.clone());
-                }
-
-                return Err(RedisError::StreamError("ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()));
+                return Ok(format!("{timestamp}-0").into());
             } else {
-                return Err(RedisError::StreamError("ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()));
+                if timestamp == l_timestamp {
+                    if seq <= l_seq {
+                        return Err(RedisError::StreamError(
+                            "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string()
+                        ));
+                    }
+
+                    return Ok(format!("{timestamp}-{seq}").into());
+                }
+
+                return Ok(format!("{timestamp}-{seq}").into());
             }
         }
         None => {
-            if entry_id_str <= "0-0" {
-                return Err(RedisError::StreamError(
-                    "ERR The ID specified in XADD must be greater than 0-0".to_string(),
-                ));
+            if timestamp == "0" {
+                return Ok("0-1".into());
+            } else if seq == "*" {
+                return Ok(format!("{timestamp}-0").into());
+            } else {
+                return Ok(format!("{timestamp}-{seq}").into());
             }
-
-            return Ok(entry_id.clone());
         }
     }
 }
