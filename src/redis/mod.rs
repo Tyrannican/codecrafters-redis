@@ -326,6 +326,39 @@ impl WorkerTask {
 
             CommandType::XRead => {
                 validate_args_len(&request, 3)?;
+                let keys = &request.args[1..];
+                assert!(keys.len() % 2 == 0);
+
+                let mid = keys.len() / 2;
+                let stream_keys = &keys[..mid];
+                let entry_ids = &keys[mid..];
+
+                let store = self.store.stream_reader()?;
+                let results = store.xread(stream_keys, entry_ids);
+
+                let mut stream_vecs = Vec::new();
+                for result in results {
+                    let (stream_key, entries) = result;
+                    let stream_key = Value::String(stream_key.clone());
+
+                    let mut entry_vecs = Vec::new();
+                    for entry in entries {
+                        let (entry_id, entry_values) = entry;
+                        let entry_id = Value::String(entry_id.clone());
+                        let mut e_v = Vec::new();
+
+                        for (key, value) in entry_values.iter() {
+                            e_v.push(Value::String(key.clone()));
+                            e_v.push(Value::String(value.clone()));
+                        }
+
+                        entry_vecs.push(Value::Array(vec![entry_id, Value::Array(e_v)]));
+                    }
+
+                    stream_vecs.push(Value::Array(vec![stream_key, Value::Array(entry_vecs)]));
+                }
+
+                response.push(Value::Array(stream_vecs));
             }
         }
 

@@ -41,12 +41,12 @@ impl StreamStore {
         Ok(entry_key)
     }
 
-    pub fn xrange<'a>(
-        &'a self,
+    pub fn xrange(
+        &self,
         stream_key: &Bytes,
         start_id: &Bytes,
         end_id: &Bytes,
-    ) -> Result<Vec<Vec<&'a Bytes>>, RedisError> {
+    ) -> Result<Vec<Vec<Bytes>>, RedisError> {
         let Some(stream) = self.map.get(stream_key) else {
             todo!("error");
         };
@@ -65,16 +65,46 @@ impl StreamStore {
             }
 
             let mut entry_vec = Vec::new();
-            entry_vec.push(entry_id);
+            entry_vec.push(entry_id.clone());
             for (key, value) in entry.iter() {
-                entry_vec.push(key);
-                entry_vec.push(value);
+                entry_vec.push(key.clone());
+                entry_vec.push(value.clone());
             }
 
             values.push(entry_vec);
         }
 
         Ok(values)
+    }
+
+    pub fn xread<'a>(
+        &'a self,
+        stream_keys: &[Bytes],
+        entry_ids: &[Bytes],
+    ) -> Vec<(Bytes, Vec<(&'a Bytes, &'a BTreeSet<(Bytes, Bytes)>)>)> {
+        assert!(stream_keys.len() == entry_ids.len());
+
+        let mut streams = Vec::new();
+        for (stream_key, entry_id) in stream_keys.into_iter().zip(entry_ids.into_iter()) {
+            let Some(stream) = self.map.get(stream_key) else {
+                todo!("error");
+            };
+
+            let entries = stream
+                .iter()
+                .filter_map(|(e_id, entry)| {
+                    if *e_id > entry_id {
+                        return Some((e_id, entry));
+                    }
+
+                    None
+                })
+                .collect::<Vec<(&Bytes, &BTreeSet<(Bytes, Bytes)>)>>();
+
+            streams.push((stream_key.clone(), entries));
+        }
+
+        streams
     }
 }
 
