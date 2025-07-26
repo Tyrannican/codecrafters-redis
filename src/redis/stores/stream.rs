@@ -3,7 +3,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::redis::{protocol::RedisError, utils::bytes_to_str};
+use crate::redis::{
+    protocol::{RedisError, Value},
+    utils::bytes_to_str,
+};
 use bytes::Bytes;
 
 type Stream = BTreeMap<Bytes, BTreeSet<(Bytes, Bytes)>>;
@@ -28,7 +31,7 @@ impl StreamStore {
         stream_key: &'a Bytes,
         entry_key: &'a Bytes,
         values: Option<&'a [(Bytes, Bytes)]>,
-    ) -> Result<Bytes, RedisError> {
+    ) -> Result<Value, RedisError> {
         let stream = self.map.entry(stream_key.clone()).or_default();
         let entry_key = validate_entry_id(entry_key, stream)?;
         let entry = stream.entry(entry_key.clone()).or_default();
@@ -38,7 +41,7 @@ impl StreamStore {
             }
         }
 
-        Ok(entry_key)
+        Ok(Value::String(entry_key))
     }
 
     pub fn xrange(
@@ -46,7 +49,7 @@ impl StreamStore {
         stream_key: &Bytes,
         start_id: &Bytes,
         end_id: &Bytes,
-    ) -> Result<Vec<Vec<Bytes>>, RedisError> {
+    ) -> Result<Value, RedisError> {
         let Some(stream) = self.map.get(stream_key) else {
             todo!("error");
         };
@@ -65,23 +68,21 @@ impl StreamStore {
             }
 
             let mut entry_vec = Vec::new();
-            entry_vec.push(entry_id.clone());
             for (key, value) in entry.iter() {
-                entry_vec.push(key.clone());
-                entry_vec.push(value.clone());
+                entry_vec.push(Value::String(key.clone()));
+                entry_vec.push(Value::String(value.clone()));
             }
 
-            values.push(entry_vec);
+            values.push(Value::Array(vec![
+                Value::String(entry_id.clone()),
+                Value::Array(entry_vec),
+            ]));
         }
 
-        Ok(values)
+        Ok(Value::Array(values))
     }
 
-    pub fn xread<'a>(
-        &'a self,
-        stream_keys: &[Bytes],
-        entry_ids: &[Bytes],
-    ) -> Vec<(Bytes, Vec<(&'a Bytes, &'a BTreeSet<(Bytes, Bytes)>)>)> {
+    pub fn xread<'a>(&'a self, stream_keys: &[Bytes], entry_ids: &[Bytes]) -> Value {
         assert!(stream_keys.len() == entry_ids.len());
 
         let mut streams = Vec::new();
@@ -90,21 +91,27 @@ impl StreamStore {
                 todo!("error");
             };
 
-            let entries = stream
-                .iter()
-                .filter_map(|(e_id, entry)| {
-                    if *e_id > entry_id {
-                        return Some((e_id, entry));
-                    }
+            let stream_key = Value::String(stream_key.clone());
+            let mut stream_vec = Vec::new();
+            for (e_id, entry) in stream.iter() {
+                if e_id <= entry_id {
+                    continue;
+                }
 
-                    None
-                })
-                .collect::<Vec<(&Bytes, &BTreeSet<(Bytes, Bytes)>)>>();
+                let e_id = Value::String(e_id.clone());
+                let mut entry_vec = Vec::new();
+                for (key, value) in entry.iter() {
+                    entry_vec.push(Value::String(key.clone()));
+                    entry_vec.push(Value::String(value.clone()));
+                }
 
-            streams.push((stream_key.clone(), entries));
+                stream_vec.push(Value::Array(vec![e_id, Value::Array(entry_vec)]));
+            }
+
+            streams.push(Value::Array(vec![stream_key, Value::Array(stream_vec)]));
         }
 
-        streams
+        Value::Array(streams)
     }
 }
 
@@ -172,13 +179,17 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
             }
         }
         None => {
-            if timestamp == "0" {
+            if timestamp == "0" && seq == "0" {
                 return Ok("0-1".into());
             } else if seq == "*" {
+                if timestamp == "0" {
+                    return Ok(format!("0-1").into());
+                }
+
                 return Ok(format!("{timestamp}-0").into());
-            } else {
-                return Ok(format!("{timestamp}-{seq}").into());
             }
+
+            return Ok(format!("{timestamp}-{seq}").into());
         }
     }
 }
