@@ -290,13 +290,22 @@ impl WorkerTask {
                     None
                 };
 
-                let mut store = self.store.stream_writer()?;
-                match store.add_entry(stream_key, entry_id, values.as_deref()) {
-                    Ok(entry_key) => response.push(entry_key),
-                    Err(e) => match e {
-                        RedisError::StreamIdError(se) => response.push(Value::Error(se.into())),
-                        _ => return Err(e),
-                    },
+                {
+                    let mut store = self.store.stream_writer()?;
+                    match store.add_entry(stream_key, entry_id, values.as_deref()) {
+                        Ok(entry_key) => response.push(entry_key),
+                        Err(e) => match e {
+                            RedisError::StreamIdError(se) => response.push(Value::Error(se.into())),
+                            _ => return Err(e),
+                        },
+                    }
+                }
+
+                if let Some(sender) = self.store.client_sender(stream_key)? {
+                    sender
+                        .send(stream_key.clone())
+                        .await
+                        .map_err(|_| RedisError::ChannelSendError)?;
                 }
             }
 
@@ -313,16 +322,52 @@ impl WorkerTask {
 
             CommandType::XRead => {
                 validate_args_len(&request, 3)?;
-                let keys = &request.args[1..];
+                let (timeout, keys) = if request.args.contains(&"block".into()) {
+                    let timeout = &request.args[1];
+                    let keys = &request.args[3..];
+                    (Some(bytes_to_number::<usize>(timeout)?), keys)
+                } else {
+                    (None, &request.args[1..])
+                };
+
+                let (keys, _wait_for_new) = if keys.last() == Some(&"$".into()) {
+                    (&keys[..keys.len() - 1], true)
+                } else {
+                    (keys, false)
+                };
+
                 assert!(keys.len() % 2 == 0);
 
                 let mid = keys.len() / 2;
                 let stream_keys = &keys[..mid];
                 let entry_ids = &keys[mid..];
+                match timeout {
+                    Some(to) => {
+                        let receiver =
+                            self.store.register_interest(self.client_id.clone(), keys)?;
 
-                let store = self.store.stream_reader()?;
-                let results = store.xread(stream_keys, entry_ids);
-                response.push(results);
+                        match tokio::time::timeout(
+                            Duration::from_millis(to as u64),
+                            receiver.recv(),
+                        )
+                        .await
+                        {
+                            Ok(Ok(item)) => {
+                                let store = self.store.stream_reader()?;
+                                let result = store.xread(&[item], entry_ids);
+                                response.push(result);
+                            }
+                            _ => response.push(Value::NullString),
+                        }
+
+                        self.store.unregister_interest(&self.client_id)?;
+                    }
+                    None => {
+                        let store = self.store.stream_reader()?;
+                        let results = store.xread(stream_keys, entry_ids);
+                        response.push(results);
+                    }
+                }
             }
         }
 
