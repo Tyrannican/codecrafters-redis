@@ -91,21 +91,33 @@ impl StreamStore {
                 todo!("error");
             };
 
-            let stream_key = Value::String(stream_key.clone());
             let mut stream_vec = Vec::new();
-            for (e_id, entry) in stream.iter() {
-                if e_id <= entry_id {
-                    continue;
+            let stream_key = Value::String(stream_key.clone());
+            if entry_ids.contains(&"$".into()) {
+                if let Some((e_id, entry)) = stream.last_key_value() {
+                    let e_id = Value::String(e_id.clone());
+                    let mut entry_vec = Vec::new();
+                    for (key, value) in entry.iter() {
+                        entry_vec.push(Value::String(key.clone()));
+                        entry_vec.push(Value::String(value.clone()));
+                    }
+                    stream_vec.push(Value::Array(vec![e_id, Value::Array(entry_vec)]));
                 }
+            } else {
+                for (e_id, entry) in stream.iter() {
+                    if e_id <= entry_id {
+                        continue;
+                    }
 
-                let e_id = Value::String(e_id.clone());
-                let mut entry_vec = Vec::new();
-                for (key, value) in entry.iter() {
-                    entry_vec.push(Value::String(key.clone()));
-                    entry_vec.push(Value::String(value.clone()));
+                    let e_id = Value::String(e_id.clone());
+                    let mut entry_vec = Vec::new();
+                    for (key, value) in entry.iter() {
+                        entry_vec.push(Value::String(key.clone()));
+                        entry_vec.push(Value::String(value.clone()));
+                    }
+
+                    stream_vec.push(Value::Array(vec![e_id, Value::Array(entry_vec)]));
                 }
-
-                stream_vec.push(Value::Array(vec![e_id, Value::Array(entry_vec)]));
             }
 
             streams.push(Value::Array(vec![stream_key, Value::Array(stream_vec)]));

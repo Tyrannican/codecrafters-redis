@@ -330,17 +330,10 @@ impl WorkerTask {
                     (None, &request.args[1..])
                 };
 
-                let (keys, _wait_for_new) = if keys.last() == Some(&"$".into()) {
-                    (&keys[..keys.len() - 1], true)
-                } else {
-                    (keys, false)
-                };
-
-                assert!(keys.len() % 2 == 0);
-
                 let mid = keys.len() / 2;
                 let stream_keys = &keys[..mid];
                 let entry_ids = &keys[mid..];
+
                 match timeout {
                     Some(to) => {
                         let receiver =
