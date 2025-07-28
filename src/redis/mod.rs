@@ -101,9 +101,10 @@ impl WorkerTask {
                 let store = self.store.map_reader()?;
 
                 match store.get(key) {
-                    Some(value) => {
-                        response.push(Value::String(value.clone()));
-                    }
+                    Some(value) => match bytes_to_number::<i64>(value) {
+                        Ok(v) => response.push(Value::Integer(v)),
+                        Err(_) => response.push(Value::String(value.clone())),
+                    },
                     None => response.push(Value::NullString),
                 }
             }
@@ -368,6 +369,19 @@ impl WorkerTask {
                         let results = store.xread(stream_keys, entry_ids);
                         response.push(results);
                     }
+                }
+            }
+
+            CommandType::Incr => {
+                validate_args_len(&request, 1)?;
+
+                let key = &request.args[0];
+                let mut map = self.store.map_writer()?;
+                match map.incr(key) {
+                    Ok(value) => response.push(Value::Integer(value)),
+                    Err(_) => response.push(Value::error(
+                        "ERR value is not an integer or out of range".into(),
+                    )),
                 }
             }
         }

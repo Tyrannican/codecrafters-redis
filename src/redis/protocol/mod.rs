@@ -22,6 +22,7 @@ pub enum CommandType {
     XAdd,
     XRange,
     XRead,
+    Incr,
 }
 
 impl CommandType {
@@ -42,6 +43,7 @@ impl CommandType {
             "xadd" => Ok(Self::XAdd),
             "xrange" => Ok(Self::XRange),
             "xread" => Ok(Self::XRead),
+            "incr" => Ok(Self::Incr),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -65,6 +67,7 @@ impl std::fmt::Display for CommandType {
             Self::XAdd => write!(f, "xadd"),
             Self::XRange => write!(f, "xrange"),
             Self::XRead => write!(f, "xread"),
+            Self::Incr => write!(f, "incr"),
         }
     }
 }

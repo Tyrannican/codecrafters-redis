@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 
 use crate::redis::protocol::RedisError;
+use crate::redis::utils::bytes_to_number;
 
 struct MapStoreValue {
     value: Bytes,
@@ -73,6 +74,23 @@ impl MapStore {
 
         self.map.insert(key.clone(), store_value);
         Ok(())
+    }
+
+    pub fn incr(&mut self, key: &Bytes) -> Result<i64, RedisError> {
+        let thing = self
+            .map
+            .entry(key.clone())
+            .or_insert(MapStoreValue::new("0".into(), None));
+
+        let n = match bytes_to_number::<i64>(&thing.value) {
+            Ok(value) => {
+                thing.value = format!("{}", value + 1).into();
+                value + 1
+            }
+            Err(_) => return Err(RedisError::NumberParse),
+        };
+
+        Ok(n)
     }
 }
 
