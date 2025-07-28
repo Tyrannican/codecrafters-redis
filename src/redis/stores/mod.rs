@@ -1,82 +1,19 @@
-pub mod list;
-pub mod map;
-pub mod stream;
+mod list;
+mod map;
+mod notifier;
+mod stream;
 
 use bytes::Bytes;
 use list::ListStore;
 use map::MapStore;
+use notifier::Notifier;
 use stream::StreamStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-    time::Instant,
-};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::protocol::RedisError;
-
-struct Interest {
-    interest: BTreeSet<Bytes>,
-    timestamp: Instant,
-    sender: AsyncSender<Bytes>,
-}
-
-pub struct Notifier {
-    clients: BTreeMap<Bytes, Interest>,
-}
-
-impl Notifier {
-    pub fn new() -> Self {
-        Self {
-            clients: BTreeMap::default(),
-        }
-    }
-
-    pub fn register_client(&mut self, id: Bytes, interest: &[Bytes]) -> AsyncReceiver<Bytes> {
-        let (sender, receiver) = kanal::unbounded_async();
-        self.clients.insert(
-            id,
-            Interest {
-                interest: BTreeSet::from_iter(interest.iter().cloned()),
-                timestamp: Instant::now(),
-                sender,
-            },
-        );
-
-        receiver
-    }
-
-    pub fn unregister_client(&mut self, id: &Bytes) {
-        self.clients.remove(id);
-    }
-
-    pub fn client_sender(&self, msg: &Bytes) -> Option<AsyncSender<Bytes>> {
-        match self.longest_waiting_client() {
-            Some(client) => {
-                if client.interest.contains(msg) {
-                    return Some(client.sender.clone());
-                }
-
-                None
-            }
-            None => None,
-        }
-    }
-
-    fn longest_waiting_client(&self) -> Option<&Interest> {
-        match self.clients.iter().max_by(|a, b| {
-            a.1.timestamp
-                .elapsed()
-                .as_millis()
-                .cmp(&b.1.timestamp.elapsed().as_millis())
-        }) {
-            Some(client) => Some(client.1),
-            None => None,
-        }
-    }
-}
 
 pub struct GlobalStore {
     notifier: RwLock<Notifier>,
@@ -141,22 +78,22 @@ impl GlobalStore {
         self.streams.write().map_err(|_| RedisError::WriteLock)
     }
 
-    pub fn key_type<'a>(&self, key: &Bytes) -> Result<&'a str, RedisError> {
+    pub fn key_type(&self, key: &Bytes) -> Result<Bytes, RedisError> {
         let map = self.map_reader()?;
         if map.contains(key) {
-            return Ok("string");
+            return Ok("string".into());
         }
 
         let list = self.list_reader()?;
         if list.contains(key) {
-            return Ok("list");
+            return Ok("list".into());
         }
 
         let stream = self.stream_reader()?;
         if stream.contains(key) {
-            return Ok("stream");
+            return Ok("stream".into());
         }
 
-        Ok("none")
+        Ok("none".into())
     }
 }

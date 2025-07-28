@@ -82,11 +82,11 @@ impl StreamStore {
         Ok(Value::Array(values))
     }
 
-    pub fn xread<'a>(&'a self, stream_keys: &[Bytes], entry_ids: &[Bytes]) -> Value {
+    pub fn xread(&self, stream_keys: &[Bytes], entry_ids: &[Bytes]) -> Value {
         assert!(stream_keys.len() == entry_ids.len());
 
         let mut streams = Vec::new();
-        for (stream_key, entry_id) in stream_keys.into_iter().zip(entry_ids.into_iter()) {
+        for (stream_key, entry_id) in stream_keys.iter().zip(entry_ids.iter()) {
             let Some(stream) = self.map.get(stream_key) else {
                 todo!("error");
             };
@@ -175,7 +175,7 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
                     return Ok(format!("{timestamp}-{next_seq}").into());
                 }
 
-                return Ok(format!("{timestamp}-0").into());
+                Ok(format!("{timestamp}-0").into())
             } else {
                 if timestamp == l_timestamp {
                     if seq <= l_seq {
@@ -187,7 +187,7 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
                     return Ok(format!("{timestamp}-{seq}").into());
                 }
 
-                return Ok(format!("{timestamp}-{seq}").into());
+                Ok(format!("{timestamp}-{seq}").into())
             }
         }
         None => {
@@ -195,13 +195,13 @@ pub fn validate_entry_id(entry_id: &Bytes, stream: &mut Stream) -> Result<Bytes,
                 return Ok("0-1".into());
             } else if seq == "*" {
                 if timestamp == "0" {
-                    return Ok(format!("0-1").into());
+                    return Ok("0-1".to_string().into());
                 }
 
                 return Ok(format!("{timestamp}-0").into());
             }
 
-            return Ok(format!("{timestamp}-{seq}").into());
+            Ok(format!("{timestamp}-{seq}").into())
         }
     }
 }

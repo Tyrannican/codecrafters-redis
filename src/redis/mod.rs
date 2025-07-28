@@ -263,7 +263,7 @@ impl WorkerTask {
                 validate_args_len(&request, 1)?;
                 let key = &request.args[0];
                 let key_type = self.store.key_type(key)?;
-                response.push(Value::SimpleString(key_type.into()));
+                response.push(Value::SimpleString(key_type));
             }
             CommandType::XAdd => {
                 validate_args_len(&request, 2)?;
@@ -340,13 +340,10 @@ impl WorkerTask {
                             self.store.register_interest(self.client_id.clone(), keys)?;
 
                         if to == 0 {
-                            match receiver.recv().await {
-                                Ok(v) => {
-                                    let store = self.store.stream_reader()?;
-                                    let result = store.xread(&[v], entry_ids);
-                                    response.push(result);
-                                }
-                                Err(_) => {}
+                            if let Ok(v) = receiver.recv().await {
+                                let store = self.store.stream_reader()?;
+                                let result = store.xread(&[v], entry_ids);
+                                response.push(result);
                             }
                         } else {
                             match tokio::time::timeout(
