@@ -346,18 +346,29 @@ impl WorkerTask {
                         let receiver =
                             self.store.register_interest(self.client_id.clone(), keys)?;
 
-                        match tokio::time::timeout(
-                            Duration::from_millis(to as u64),
-                            receiver.recv(),
-                        )
-                        .await
-                        {
-                            Ok(Ok(item)) => {
-                                let store = self.store.stream_reader()?;
-                                let result = store.xread(&[item], entry_ids);
-                                response.push(result);
+                        if to == 0 {
+                            match receiver.recv().await {
+                                Ok(v) => {
+                                    let store = self.store.stream_reader()?;
+                                    let result = store.xread(&[v], entry_ids);
+                                    response.push(result);
+                                }
+                                Err(_) => {}
                             }
-                            _ => response.push(Value::NullString),
+                        } else {
+                            match tokio::time::timeout(
+                                Duration::from_millis(to as u64),
+                                receiver.recv(),
+                            )
+                            .await
+                            {
+                                Ok(Ok(item)) => {
+                                    let store = self.store.stream_reader()?;
+                                    let result = store.xread(&[item], entry_ids);
+                                    response.push(result);
+                                }
+                                _ => response.push(Value::NullString),
+                            }
                         }
 
                         self.store.unregister_interest(&self.client_id)?;
