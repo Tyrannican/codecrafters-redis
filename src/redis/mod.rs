@@ -381,6 +381,7 @@ impl WorkerTask {
                     )),
                 }
             }
+            cmd => todo!("implement me - {cmd}"),
         }
 
         Ok(response)

@@ -1,12 +1,14 @@
 mod list;
 mod map;
 mod notifier;
+mod queue;
 mod stream;
 
 use bytes::Bytes;
 use list::ListStore;
 use map::MapStore;
 use notifier::Notifier;
+use queue::QueueStore;
 use stream::StreamStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
@@ -20,6 +22,7 @@ pub struct GlobalStore {
     maps: RwLock<MapStore>,
     lists: RwLock<ListStore>,
     streams: RwLock<StreamStore>,
+    queues: RwLock<QueueStore>,
 }
 
 impl GlobalStore {
@@ -29,6 +32,7 @@ impl GlobalStore {
             maps: RwLock::new(MapStore::new()),
             lists: RwLock::new(ListStore::new()),
             streams: RwLock::new(StreamStore::new()),
+            queues: RwLock::new(QueueStore::new()),
         }
     }
 
@@ -76,6 +80,14 @@ impl GlobalStore {
 
     pub fn stream_writer(&self) -> Result<RwLockWriteGuard<'_, StreamStore>, RedisError> {
         self.streams.write().map_err(|_| RedisError::WriteLock)
+    }
+
+    pub fn queue_reader(&self) -> Result<RwLockReadGuard<'_, QueueStore>, RedisError> {
+        self.queues.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn queue_writer(&self) -> Result<RwLockWriteGuard<'_, QueueStore>, RedisError> {
+        self.queues.write().map_err(|_| RedisError::WriteLock)
     }
 
     pub fn key_type(&self, key: &Bytes) -> Result<Bytes, RedisError> {
