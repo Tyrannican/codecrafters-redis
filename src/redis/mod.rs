@@ -101,10 +101,7 @@ impl WorkerTask {
                 let store = self.store.map_reader()?;
 
                 match store.get(key) {
-                    Some(value) => match bytes_to_number::<i64>(value) {
-                        Ok(v) => response.push(Value::Integer(v)),
-                        Err(_) => response.push(Value::String(value.clone())),
-                    },
+                    Some(value) => response.push(Value::String(value.clone())),
                     None => response.push(Value::NullString),
                 }
             }
