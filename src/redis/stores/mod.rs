@@ -102,6 +102,7 @@ impl GlobalStore {
         }
 
         let stream = self.stream_reader()?;
+
         if stream.contains(key) {
             return Ok("stream".into());
         }
