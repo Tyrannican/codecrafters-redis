@@ -472,7 +472,11 @@ impl WorkerTask {
 
                 match str::from_utf8(&request.args[0]).map_err(|_| RedisError::StringConversion)? {
                     "replication" => {
-                        response.push(Value::String(format!("role:{}", self.server_role).into()));
+                        let info_string = format!(
+                            "role:{}\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0",
+                            self.server_role
+                        );
+                        response.push(Value::String(info_string.into()));
                     }
                     _ => {}
                 }
