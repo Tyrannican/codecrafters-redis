@@ -25,6 +25,7 @@ pub enum CommandType {
     Incr,
     Multi,
     Exec,
+    Discard,
 }
 
 impl CommandType {
@@ -48,6 +49,7 @@ impl CommandType {
             "incr" => Ok(Self::Incr),
             "multi" => Ok(Self::Multi),
             "exec" => Ok(Self::Exec),
+            "discard" => Ok(Self::Discard),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -74,6 +76,7 @@ impl std::fmt::Display for CommandType {
             Self::Incr => write!(f, "incr"),
             Self::Multi => write!(f, "multi"),
             Self::Exec => write!(f, "exec"),
+            Self::Discard => write!(f, "discard"),
         }
     }
 }

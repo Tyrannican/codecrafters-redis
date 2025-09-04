@@ -88,10 +88,15 @@ impl WorkerTask {
 
         {
             let mut txn_writer = self.store.transaction_writer()?;
-            if txn_writer.has_transaction(&self.client_id) && request.cmd != CommandType::Exec {
-                txn_writer.add_to_transaction(&self.client_id, request);
-                response.push(Value::SimpleString("QUEUED".into()));
-                return Ok(response);
+            if txn_writer.has_transaction(&self.client_id) {
+                match request.cmd {
+                    CommandType::Exec | CommandType::Discard => {}
+                    _ => {
+                        txn_writer.add_to_transaction(&self.client_id, request);
+                        response.push(Value::SimpleString("QUEUED".into()));
+                        return Ok(response);
+                    }
+                }
             }
         }
 
@@ -426,6 +431,14 @@ impl WorkerTask {
                     response.push(Value::Array(vec![]));
                 } else {
                     response = vec![Value::Array(response)];
+                }
+            }
+
+            CommandType::Discard => {
+                let mut writer = self.store.transaction_writer()?;
+                match writer.remove_transaction(&self.client_id) {
+                    Some(_) => response.push(Value::ok()),
+                    None => response.push(Value::error("ERR DISCARD without MULTI".into())),
                 }
             }
 
