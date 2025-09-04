@@ -88,13 +88,20 @@ impl WorkerTask {
 
         {
             let mut txn_writer = self.store.transaction_writer()?;
-            if txn_writer.has_transaction(&self.client_id) {
+            if txn_writer.has_transaction(&self.client_id) && request.cmd != CommandType::Exec {
                 txn_writer.add_to_transaction(&self.client_id, request);
                 response.push(Value::SimpleString("QUEUED".into()));
                 return Ok(response);
             }
         }
 
+        let response = self.execute_command(request).await?;
+
+        Ok(response)
+    }
+
+    async fn execute_command(&mut self, request: RedisCommand) -> Result<Vec<Value>, RedisError> {
+        let mut response = Vec::new();
         match request.cmd {
             CommandType::Ping => response.push(Value::SimpleString("PONG".into())),
             CommandType::Echo => {
@@ -398,8 +405,23 @@ impl WorkerTask {
             }
 
             CommandType::Exec => {
-                let mut writer = self.store.transaction_writer()?;
-                let txn = writer.remove_transaction(&self.client_id);
+                let txn = {
+                    let mut writer = self.store.transaction_writer()?;
+                    match writer.remove_transaction(&self.client_id) {
+                        Some(txn) => txn,
+                        None => {
+                            response.push(Value::error("ERR EXEC without MULTI".into()));
+                            return Ok(response);
+                        }
+                    }
+                };
+
+                let mut results = Vec::new();
+                for cmd in txn.commands() {
+                    results.push(Box::pin(self.execute_command(cmd)).await?);
+                }
+
+                response = results.into_iter().flatten().collect();
             }
 
             cmd => todo!("implement me - {cmd}"),

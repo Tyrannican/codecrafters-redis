@@ -5,7 +5,7 @@ mod codec;
 use super::utils::bytes_to_str;
 pub use codec::*;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CommandType {
     Ping,
     Echo,
@@ -108,6 +108,10 @@ pub struct Transaction {
 impl Transaction {
     pub fn add(&mut self, cmd: RedisCommand) {
         self.cmds.push(cmd);
+    }
+
+    pub fn commands(self) -> Vec<RedisCommand> {
+        self.cmds
     }
 }
 
