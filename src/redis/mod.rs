@@ -422,6 +422,9 @@ impl WorkerTask {
                 }
 
                 response = results.into_iter().flatten().collect();
+                if response.is_empty() {
+                    response.push(Value::Array(vec![]));
+                }
             }
 
             cmd => todo!("implement me - {cmd}"),
