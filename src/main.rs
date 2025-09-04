@@ -17,6 +17,9 @@ use redis::{
 struct Cli {
     #[arg(short, long, default_value_t = 6379)]
     pub port: u16,
+
+    #[arg(long)]
+    pub replicaof: Option<String>,
 }
 
 struct ConnectionHandler {
@@ -67,6 +70,31 @@ impl ConnectionHandler {
     }
 }
 
+fn determine_server_role(replica: Option<String>) -> ServerRole {
+    match replica {
+        Some(s) => {
+            let Some((addr, port)) = s.split_once(" ") else {
+                eprintln!("expected replica address");
+                std::process::exit(-1);
+            };
+
+            let addr = if addr == "localhost" {
+                "127.0.0.1".to_string()
+            } else {
+                addr.to_owned()
+            };
+
+            let Ok(port) = port.parse::<u16>() else {
+                eprintln!("error parsing master port for replica");
+                std::process::exit(-1);
+            };
+
+            ServerRole::Replica((addr, port))
+        }
+        None => ServerRole::Master,
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
@@ -74,7 +102,8 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(addr).await.unwrap();
     let (tx, rx) = unbounded_async::<Request>();
 
-    let mut server = RedisServer::new(ServerRole::Master, 5);
+    let role = determine_server_role(args.replicaof);
+    let mut server = RedisServer::new(role);
     server.start(rx);
 
     loop {

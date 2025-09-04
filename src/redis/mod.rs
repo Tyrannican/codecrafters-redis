@@ -13,11 +13,13 @@ use protocol::{CommandType, RedisCommand, RedisError, Value};
 use stores::GlobalStore;
 use utils::{bytes_to_number, validate_args_len};
 
+const WORKER_COUNT: usize = 5;
+
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
 pub enum ServerRole {
     Master,
-    Replica((Bytes, u16)),
+    Replica((String, u16)),
 }
 
 impl std::fmt::Display for ServerRole {
@@ -37,10 +39,10 @@ pub struct RedisServer {
 }
 
 impl RedisServer {
-    pub fn new(role: ServerRole, worker_count: usize) -> Self {
+    pub fn new(role: ServerRole) -> Self {
         Self {
             role: Arc::new(role),
-            worker_count,
+            worker_count: WORKER_COUNT,
             pool: BTreeMap::new(),
             store: Arc::new(GlobalStore::new()),
         }
