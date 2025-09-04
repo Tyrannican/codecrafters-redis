@@ -87,8 +87,9 @@ impl WorkerTask {
         let request = RedisCommand::new(&self.request)?;
 
         {
-            let txns_reader = self.store.transaction_reader()?;
-            if txns_reader.has_queue(&self.client_id) {
+            let mut txn_writer = self.store.transaction_writer()?;
+            if txn_writer.has_transaction(&self.client_id) {
+                txn_writer.add_to_transaction(&self.client_id, request);
                 response.push(Value::SimpleString("QUEUED".into()));
                 return Ok(response);
             }
@@ -392,8 +393,13 @@ impl WorkerTask {
 
             CommandType::Multi => {
                 let mut writer = self.store.transaction_writer()?;
-                writer.create_queue(&self.client_id);
+                writer.create_transaction(&self.client_id);
                 response.push(Value::ok());
+            }
+
+            CommandType::Exec => {
+                let mut writer = self.store.transaction_writer()?;
+                let txn = writer.remove_transaction(&self.client_id);
             }
 
             cmd => todo!("implement me - {cmd}"),
