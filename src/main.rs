@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bytes::Bytes;
+use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use kanal::{unbounded_async, AsyncSender};
 use tokio::net::{TcpListener, TcpStream};
@@ -11,6 +12,12 @@ use redis::{
     protocol::{RespProtocol, Value},
     Node, Request,
 };
+
+#[derive(Parser)]
+struct Cli {
+    #[arg(short, long, default_value_t = 6379)]
+    pub port: u16,
+}
 
 struct ConnectionHandler {
     id: Bytes,
@@ -62,7 +69,9 @@ impl ConnectionHandler {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+    let args = Cli::parse();
+    let addr = format!("0.0.0.0:{}", args.port);
+    let listener = TcpListener::bind(addr).await.unwrap();
     let (tx, rx) = unbounded_async::<Request>();
 
     let mut node = Node::new(5);
