@@ -100,6 +100,17 @@ impl Value {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Transaction {
+    cmds: Vec<RedisCommand>,
+}
+
+impl Transaction {
+    pub fn add(&mut self, cmd: RedisCommand) {
+        self.cmds.push(cmd);
+    }
+}
+
 #[derive(Debug)]
 pub struct RedisCommand {
     pub cmd: CommandType,

@@ -86,6 +86,14 @@ impl WorkerTask {
         let mut response = Vec::new();
         let request = RedisCommand::new(&self.request)?;
 
+        {
+            let txns_reader = self.store.transaction_reader()?;
+            if txns_reader.has_queue(&self.client_id) {
+                response.push(Value::SimpleString("QUEUED".into()));
+                return Ok(response);
+            }
+        }
+
         match request.cmd {
             CommandType::Ping => response.push(Value::SimpleString("PONG".into())),
             CommandType::Echo => {
@@ -247,10 +255,10 @@ impl WorkerTask {
                                     Value::String(key.clone()),
                                     Value::String(value),
                                 ])),
-                                None => response.push(Value::NullString),
+                                None => response.push(Value::NullArray),
                             }
                         }
-                        _ => response.push(Value::NullString),
+                        _ => response.push(Value::NullArray),
                     }
                 }
 
@@ -355,7 +363,7 @@ impl WorkerTask {
                                     let result = store.xread(&[item], entry_ids);
                                     response.push(result);
                                 }
-                                _ => response.push(Value::NullString),
+                                _ => response.push(Value::NullArray),
                             }
                         }
 
@@ -381,6 +389,13 @@ impl WorkerTask {
                     )),
                 }
             }
+
+            CommandType::Multi => {
+                let mut writer = self.store.transaction_writer()?;
+                writer.create_queue(&self.client_id);
+                response.push(Value::ok());
+            }
+
             cmd => todo!("implement me - {cmd}"),
         }
 
