@@ -10,7 +10,7 @@ use uuid::Uuid;
 mod redis;
 use redis::{
     protocol::{RespProtocol, Value},
-    Node, Request,
+    RedisServer, Request, ServerRole,
 };
 
 #[derive(Parser)]
@@ -74,8 +74,8 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(addr).await.unwrap();
     let (tx, rx) = unbounded_async::<Request>();
 
-    let mut node = Node::new(5);
-    node.start(rx);
+    let mut server = RedisServer::new(ServerRole::Master, 5);
+    server.start(rx);
 
     loop {
         if let Ok(stream) = listener.accept().await {

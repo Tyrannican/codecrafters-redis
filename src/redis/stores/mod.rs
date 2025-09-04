@@ -82,7 +82,7 @@ impl GlobalStore {
         self.streams.write().map_err(|_| RedisError::WriteLock)
     }
 
-    pub fn transaction_reader(&self) -> Result<RwLockReadGuard<'_, TransactionStore>, RedisError> {
+    pub fn _transaction_reader(&self) -> Result<RwLockReadGuard<'_, TransactionStore>, RedisError> {
         self.txns.read().map_err(|_| RedisError::ReadLock)
     }
 

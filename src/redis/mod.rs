@@ -15,15 +15,31 @@ use utils::{bytes_to_number, validate_args_len};
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
-pub struct Node {
+pub enum ServerRole {
+    Master,
+    Replica((Bytes, u16)),
+}
+
+impl std::fmt::Display for ServerRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Master => write!(f, "master"),
+            Self::Replica(_) => write!(f, "slave"),
+        }
+    }
+}
+
+pub struct RedisServer {
+    role: Arc<ServerRole>,
     worker_count: usize,
     pool: BTreeMap<usize, JoinHandle<Result<(), RedisError>>>,
     store: Arc<GlobalStore>,
 }
 
-impl Node {
-    pub fn new(worker_count: usize) -> Self {
+impl RedisServer {
+    pub fn new(role: ServerRole, worker_count: usize) -> Self {
         Self {
+            role: Arc::new(role),
             worker_count,
             pool: BTreeMap::new(),
             store: Arc::new(GlobalStore::new()),
@@ -35,19 +51,25 @@ impl Node {
             let rx = receiver.clone();
             let store = Arc::clone(&self.store);
 
-            let handle = tokio::task::spawn(async move { worker_fn(rx, store).await });
+            let role = Arc::clone(&self.role);
+            let handle = tokio::task::spawn(async move { worker_fn(rx, store, role).await });
 
             self.pool.insert(i, handle);
         }
     }
 }
 
-async fn worker_fn(rx: AsyncReceiver<Request>, store: Arc<GlobalStore>) -> Result<(), RedisError> {
+async fn worker_fn(
+    rx: AsyncReceiver<Request>,
+    store: Arc<GlobalStore>,
+    role: Arc<ServerRole>,
+) -> Result<(), RedisError> {
     while let Ok((req, client_id, responder)) = rx.recv().await {
         let mut task = WorkerTask {
             request: req,
             client_id,
             store: Arc::clone(&store),
+            server_role: Arc::clone(&role),
         };
 
         match task.process_request().await {
@@ -79,6 +101,7 @@ struct WorkerTask {
     request: Value,
     client_id: Bytes,
     store: Arc<GlobalStore>,
+    server_role: Arc<ServerRole>,
 }
 
 impl WorkerTask {
@@ -439,6 +462,17 @@ impl WorkerTask {
                 match writer.remove_transaction(&self.client_id) {
                     Some(_) => response.push(Value::ok()),
                     None => response.push(Value::error("ERR DISCARD without MULTI".into())),
+                }
+            }
+
+            CommandType::Info => {
+                validate_args_len(&request, 1)?;
+
+                match str::from_utf8(&request.args[0]).map_err(|_| RedisError::StringConversion)? {
+                    "replication" => {
+                        response.push(Value::String(format!("role:{}", self.server_role).into()));
+                    }
+                    _ => {}
                 }
             }
 
