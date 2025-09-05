@@ -35,7 +35,7 @@ impl ReplicaMasterConnection {
             .send(Value::Array(vec![Value::SimpleString("PING".into())]))
             .await?;
 
-        let _ = self.stream.next();
+        let _ = self.stream.next().await;
 
         let repl_conf1 = vec![
             Value::String("REPLCONF".into()),
@@ -43,6 +43,7 @@ impl ReplicaMasterConnection {
             Value::String(format!("{}", self.repl_port).into()),
         ];
         self.stream.send(Value::Array(repl_conf1)).await?;
+        let _ = self.stream.next().await;
 
         let repl_conf2 = vec![
             Value::String("REPLCONF".into()),
@@ -50,13 +51,15 @@ impl ReplicaMasterConnection {
             Value::String("psync2".into()),
         ];
         self.stream.send(Value::Array(repl_conf2)).await?;
+        let _ = self.stream.next().await;
 
-        // let psync = vec![
-        //     Value::String("PSYNC".into()),
-        //     Value::String("?".into()),
-        //     Value::String("-1".into()),
-        // ];
-        // self.stream.send(Value::Array(psync)).await?;
+        let psync = vec![
+            Value::String("PSYNC".into()),
+            Value::String("?".into()),
+            Value::String("-1".into()),
+        ];
+        self.stream.send(Value::Array(psync)).await?;
+        let _ = self.stream.next().await;
 
         Ok(())
     }
