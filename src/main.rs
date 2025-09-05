@@ -10,7 +10,7 @@ use uuid::Uuid;
 mod redis;
 use redis::{
     protocol::{RespProtocol, Value},
-    RedisServer, Request, ServerRole,
+    server::{RedisServer, Request, ServerRole},
 };
 
 #[derive(Parser)]
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
     let (tx, rx) = unbounded_async::<Request>();
 
     let role = determine_server_role(args.replicaof);
-    let mut server = RedisServer::new(role);
+    let mut server = RedisServer::new(role, args.port);
     server.start(rx);
 
     loop {
