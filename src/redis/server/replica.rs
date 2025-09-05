@@ -1,16 +1,19 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
-use kanal::AsyncReceiver;
 use tokio::net::TcpStream;
 use tokio_util::codec::Framed;
 
-use crate::redis::protocol::{RespProtocol, Value};
+use crate::redis::{
+    protocol::{RedisError, RespProtocol, Value},
+    stores::GlobalStore,
+};
 
 pub struct ReplicaMasterConnection {
-    port: u16,
     repl_port: u16,
-    replica_in: AsyncReceiver<Vec<Value>>,
     stream: Framed<TcpStream, RespProtocol>,
+    store: Arc<GlobalStore>,
 }
 
 impl ReplicaMasterConnection {
@@ -18,19 +21,18 @@ impl ReplicaMasterConnection {
         addr: String,
         port: u16,
         repl_port: u16,
-        replica_in: AsyncReceiver<Vec<Value>>,
-    ) -> Result<Self> {
+        store: Arc<GlobalStore>,
+    ) -> Result<Self, RedisError> {
         let stream = TcpStream::connect(format!("{addr}:{port}")).await?;
 
         Ok(Self {
-            port,
+            store,
             repl_port,
-            replica_in,
             stream: Framed::new(stream, RespProtocol),
         })
     }
 
-    async fn handshake(&mut self) -> Result<()> {
+    async fn handshake(&mut self) -> Result<(), RedisError> {
         self.stream
             .send(Value::Array(vec![Value::SimpleString("PING".into())]))
             .await?;
@@ -64,14 +66,20 @@ impl ReplicaMasterConnection {
         Ok(())
     }
 
-    pub async fn forward(&mut self) -> Result<()> {
+    pub async fn replicate(&mut self) -> Result<(), RedisError> {
         self.handshake().await?;
-        loop {
-            while let Ok(response) = self.replica_in.recv().await {
-                for value in response {
-                    self.stream.send(value).await?;
+        while let Some(frame) = self.stream.next().await {
+            match frame {
+                Ok(_value) => {
+                    todo!("handle replication")
+                }
+                Err(e) => {
+                    eprintln!("{e:#?}");
+                    break;
                 }
             }
         }
+
+        Ok(())
     }
 }

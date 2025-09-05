@@ -3,16 +3,18 @@ use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 use kanal::{AsyncReceiver, AsyncSender};
+use tokio::sync::broadcast::Receiver as BroadcastReceiver;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::task::JoinHandle;
 
 use super::protocol::{CommandType, RedisCommand, RedisError, Value};
 use super::stores::GlobalStore;
-use super::utils::{bytes_to_number, validate_args_len, EMPTY_RDB};
+use super::utils::{bytes_to_number, empty_rdb, validate_args_len};
 
 mod replica;
 use replica::ReplicaMasterConnection;
 
-const WORKER_COUNT: usize = 5;
+const WORKER_COUNT: usize = 10;
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
@@ -59,15 +61,14 @@ impl RedisServer {
     }
 
     pub fn start(&mut self, receiver: AsyncReceiver<Request>) {
-        let (repl_sender, repl_receiver) = kanal::unbounded_async::<Vec<Value>>();
         if let Some((master_addr, master_port)) = self.role.replica_address() {
             let port = self.port;
+            let store = Arc::clone(&self.store);
             tokio::task::spawn(async move {
                 let mut master_connection =
-                    ReplicaMasterConnection::new(master_addr, master_port, port, repl_receiver)
-                        .await?;
+                    ReplicaMasterConnection::new(master_addr, master_port, port, store).await?;
 
-                master_connection.forward().await
+                master_connection.replicate().await
             });
         }
 
@@ -75,9 +76,7 @@ impl RedisServer {
             let rx = receiver.clone();
             let store = Arc::clone(&self.store);
             let role = Arc::clone(&self.role);
-            let repl_sender = repl_sender.clone();
-            let handle =
-                tokio::task::spawn(async move { worker_fn(rx, repl_sender, store, role).await });
+            let handle = tokio::task::spawn(async move { worker_fn(rx, store, role).await });
 
             self.pool.insert(i, handle);
         }
@@ -86,7 +85,6 @@ impl RedisServer {
 
 async fn worker_fn(
     rx: AsyncReceiver<Request>,
-    repl_sender: AsyncSender<Vec<Value>>,
     store: Arc<GlobalStore>,
     role: Arc<ServerRole>,
 ) -> Result<(), RedisError> {
@@ -94,7 +92,6 @@ async fn worker_fn(
         let mut task = WorkerTask {
             request: req,
             client_id,
-            repl_sender: repl_sender.clone(),
             store: Arc::clone(&store),
             server_role: Arc::clone(&role),
         };
@@ -129,7 +126,6 @@ struct WorkerTask {
     client_id: Bytes,
     store: Arc<GlobalStore>,
     server_role: Arc<ServerRole>,
-    repl_sender: AsyncSender<Vec<Value>>,
 }
 
 impl WorkerTask {
@@ -189,7 +185,6 @@ impl WorkerTask {
                 };
 
                 let mut store = self.store.map_writer()?;
-
                 match store.set(key, value, ttl) {
                     Ok(_) => response.push(Value::ok()),
                     Err(e) => response.push(Value::Error(e.to_string().into())),
@@ -519,10 +514,8 @@ impl WorkerTask {
                     "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into(),
                 ));
 
-                let rdb =
-                    hex::decode(EMPTY_RDB).map_err(|e| RedisError::HexError(e.to_string()))?;
-
-                response.push(Value::Rdb(rdb.into()));
+                let rdb = empty_rdb()?;
+                response.push(Value::Rdb(rdb));
             }
         }
 

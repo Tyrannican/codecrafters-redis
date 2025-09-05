@@ -90,7 +90,7 @@ impl std::fmt::Display for CommandType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     String(Bytes),
     SimpleString(Bytes),
