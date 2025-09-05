@@ -507,6 +507,18 @@ impl WorkerTask {
                     _ => {}
                 }
             }
+
+            CommandType::ReplConf => {
+                // TODO: Flesh out when required
+                response.push(Value::ok());
+            }
+
+            CommandType::Psync => {
+                // TODO: Flesh out when required
+                response.push(Value::SimpleString(
+                    "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into(),
+                ));
+            }
         }
 
         Ok(response)

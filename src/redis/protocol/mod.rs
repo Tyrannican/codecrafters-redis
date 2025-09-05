@@ -27,6 +27,8 @@ pub enum CommandType {
     Exec,
     Discard,
     Info,
+    ReplConf,
+    Psync,
 }
 
 impl CommandType {
@@ -52,6 +54,8 @@ impl CommandType {
             "exec" => Ok(Self::Exec),
             "discard" => Ok(Self::Discard),
             "info" => Ok(Self::Info),
+            "replconf" => Ok(Self::ReplConf),
+            "psync" => Ok(Self::Psync),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -80,6 +84,8 @@ impl std::fmt::Display for CommandType {
             Self::Exec => write!(f, "exec"),
             Self::Discard => write!(f, "discard"),
             Self::Info => write!(f, "info"),
+            Self::ReplConf => write!(f, "replconf"),
+            Self::Psync => write!(f, "psync"),
         }
     }
 }
