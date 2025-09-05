@@ -37,19 +37,19 @@ impl ReplicaMasterConnection {
 
         let _ = self.stream.next();
 
-        // let repl_conf1 = vec![
-        //     Value::String("REPLCONF".into()),
-        //     Value::String("listening-port".into()),
-        //     Value::String(format!("{}", self.repl_port).into()),
-        // ];
-        // self.stream.send(Value::Array(repl_conf1)).await?;
+        let repl_conf1 = vec![
+            Value::String("REPLCONF".into()),
+            Value::String("listening-port".into()),
+            Value::String(format!("{}", self.repl_port).into()),
+        ];
+        self.stream.send(Value::Array(repl_conf1)).await?;
 
-        // let repl_conf2 = vec![
-        //     Value::String("REPLCONF".into()),
-        //     Value::String("capa".into()),
-        //     Value::String("psync2".into()),
-        // ];
-        // self.stream.send(Value::Array(repl_conf2)).await?;
+        let repl_conf2 = vec![
+            Value::String("REPLCONF".into()),
+            Value::String("capa".into()),
+            Value::String("psync2".into()),
+        ];
+        self.stream.send(Value::Array(repl_conf2)).await?;
 
         // let psync = vec![
         //     Value::String("PSYNC".into()),
