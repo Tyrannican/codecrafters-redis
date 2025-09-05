@@ -100,6 +100,7 @@ pub enum Value {
     Array(Vec<Value>),
     NullArray,
     EmptyArray,
+    Rdb(Bytes),
 }
 
 impl Value {
@@ -204,4 +205,7 @@ pub enum RedisError {
 
     #[error("stream error - '{0}'")]
     StreamIdError(String),
+
+    #[error("hex error - '{0}'")]
+    HexError(String),
 }

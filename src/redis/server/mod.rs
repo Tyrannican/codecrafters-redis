@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 
 use super::protocol::{CommandType, RedisCommand, RedisError, Value};
 use super::stores::GlobalStore;
-use super::utils::{bytes_to_number, validate_args_len};
+use super::utils::{bytes_to_number, validate_args_len, EMPTY_RDB};
 
 mod replica;
 use replica::ReplicaMasterConnection;
@@ -518,6 +518,11 @@ impl WorkerTask {
                 response.push(Value::SimpleString(
                     "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into(),
                 ));
+
+                let rdb =
+                    hex::decode(EMPTY_RDB).map_err(|e| RedisError::HexError(e.to_string()))?;
+
+                response.push(Value::Rdb(rdb.into()));
             }
         }
 

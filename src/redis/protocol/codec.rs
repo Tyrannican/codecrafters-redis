@@ -168,6 +168,12 @@ fn write_value(value: Value, dst: &mut BytesMut) {
         Value::NullString => dst.extend_from_slice(b"$-1\r\n"),
         Value::NullArray => dst.extend_from_slice(b"*-1\r\n"),
         Value::EmptyArray => dst.extend_from_slice(b"*0\r\n"),
+        Value::Rdb(rdb) => {
+            dst.extend_from_slice(b"$");
+            dst.extend_from_slice(rdb.len().to_string().as_bytes());
+            dst.extend_from_slice(b"\r\n");
+            dst.extend_from_slice(&rdb);
+        }
         Value::Error(e) => {
             dst.extend_from_slice(b"-");
             dst.extend_from_slice(&e);
