@@ -3,6 +3,8 @@ use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 use kanal::{AsyncReceiver, AsyncSender};
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::TryRecvError;
 use tokio::sync::broadcast::Receiver as BroadcastReceiver;
 use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::task::JoinHandle;
@@ -17,6 +19,14 @@ use replica::ReplicaMasterConnection;
 const WORKER_COUNT: usize = 10;
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
+type Broadcaster = (BroadcastSender<Value>, BroadcastReceiver<Value>);
+
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
+pub enum ConnectionType {
+    #[default]
+    Client,
+    Replica,
+}
 
 pub enum ServerRole {
     Master,
@@ -72,74 +82,92 @@ impl RedisServer {
             });
         }
 
+        let (repl_sender, _repl_receiver) = broadcast::channel::<Value>(100);
         for i in 0..self.worker_count {
             let rx = receiver.clone();
             let store = Arc::clone(&self.store);
             let role = Arc::clone(&self.role);
-            let handle = tokio::task::spawn(async move { worker_fn(rx, store, role).await });
+            let mut worker = Worker::new(
+                store,
+                role,
+                rx,
+                (repl_sender.clone(), repl_sender.subscribe()),
+            );
+            let handle = tokio::task::spawn(async move { worker.start().await });
 
             self.pool.insert(i, handle);
         }
     }
 }
 
-async fn worker_fn(
-    rx: AsyncReceiver<Request>,
+pub struct Worker {
     store: Arc<GlobalStore>,
     role: Arc<ServerRole>,
-) -> Result<(), RedisError> {
-    while let Ok((req, client_id, responder)) = rx.recv().await {
-        let mut task = WorkerTask {
-            request: req,
-            client_id,
-            store: Arc::clone(&store),
-            server_role: Arc::clone(&role),
-        };
+    receiver: AsyncReceiver<Request>,
+    connection_type: ConnectionType,
+    broadcaster: Broadcaster,
+}
 
-        match task.process_request().await {
-            Ok(response) => {
-                responder
-                    .send(response)
-                    .await
-                    .map_err(|_| RedisError::ChannelSendError)?;
-            }
-
-            Err(e) => match e {
-                RedisError::InsufficientArugments(cmd) => {
-                    responder
-                        .send(vec![Value::Error(
-                            format!("insufficient arugments for command '{cmd}'").into(),
-                        )])
-                        .await
-                        .map_err(|_| RedisError::ChannelSendError)?;
-                }
-                _ => return Err(e),
-            },
+impl Worker {
+    pub fn new(
+        store: Arc<GlobalStore>,
+        role: Arc<ServerRole>,
+        receiver: AsyncReceiver<Request>,
+        broadcaster: Broadcaster,
+    ) -> Self {
+        Self {
+            store,
+            role,
+            receiver,
+            broadcaster,
+            connection_type: ConnectionType::default(),
         }
     }
 
-    Ok(())
-}
+    pub async fn start(&mut self) -> Result<(), RedisError> {
+        while let Ok((req, client_id, responder)) = self.receiver.recv().await {
+            let recv = &self.broadcaster.1;
+            dbg!(recv.is_empty(), recv.len());
+            match self.process_request(req, client_id).await {
+                Ok(response) => {
+                    responder
+                        .send(response)
+                        .await
+                        .map_err(|_| RedisError::ChannelSendError)?;
+                }
 
-struct WorkerTask {
-    request: Value,
-    client_id: Bytes,
-    store: Arc<GlobalStore>,
-    server_role: Arc<ServerRole>,
-}
+                Err(e) => match e {
+                    RedisError::InsufficientArugments(cmd) => {
+                        responder
+                            .send(vec![Value::Error(
+                                format!("insufficient arugments for command '{cmd}'").into(),
+                            )])
+                            .await
+                            .map_err(|_| RedisError::ChannelSendError)?;
+                    }
+                    _ => return Err(e),
+                },
+            }
+        }
 
-impl WorkerTask {
-    pub async fn process_request(&mut self) -> Result<Vec<Value>, RedisError> {
+        Ok(())
+    }
+
+    async fn process_request(
+        &mut self,
+        request: Value,
+        client_id: Bytes,
+    ) -> Result<Vec<Value>, RedisError> {
         let mut response = Vec::new();
-        let request = RedisCommand::new(&self.request)?;
+        let request = RedisCommand::new(&request)?;
 
         {
             let mut txn_writer = self.store.transaction_writer()?;
-            if txn_writer.has_transaction(&self.client_id) {
+            if txn_writer.has_transaction(&client_id) {
                 match request.cmd {
                     CommandType::Exec | CommandType::Discard => {}
                     _ => {
-                        txn_writer.add_to_transaction(&self.client_id, request);
+                        txn_writer.add_to_transaction(&client_id, request);
                         response.push(Value::SimpleString("QUEUED".into()));
                         return Ok(response);
                     }
@@ -147,12 +175,16 @@ impl WorkerTask {
             }
         }
 
-        let response = self.execute_command(request).await?;
+        let response = self.execute_command(request, client_id).await?;
 
         Ok(response)
     }
 
-    async fn execute_command(&mut self, request: RedisCommand) -> Result<Vec<Value>, RedisError> {
+    async fn execute_command(
+        &mut self,
+        request: RedisCommand,
+        client_id: Bytes,
+    ) -> Result<Vec<Value>, RedisError> {
         let mut response = Vec::new();
         match request.cmd {
             CommandType::Ping => response.push(Value::SimpleString("PONG".into())),
@@ -189,6 +221,11 @@ impl WorkerTask {
                     Ok(_) => response.push(Value::ok()),
                     Err(e) => response.push(Value::Error(e.to_string().into())),
                 }
+
+                let repl_sender = &self.broadcaster.0;
+                repl_sender
+                    .send(request.raw)
+                    .map_err(|_| RedisError::ChannelSendError)?;
             }
             CommandType::RPush => {
                 validate_args_len(&request, 2)?;
@@ -286,7 +323,7 @@ impl WorkerTask {
                 validate_args_len(&request, 2)?;
                 let keys = &request.args[..&request.args.len() - 1];
                 let timeout = &request.args.last().unwrap();
-                let rx = self.store.register_interest(self.client_id.clone(), keys)?;
+                let rx = self.store.register_interest(client_id.clone(), keys)?;
 
                 let timeout = bytes_to_number::<f64>(timeout)?;
                 if timeout == 0.0 {
@@ -321,7 +358,7 @@ impl WorkerTask {
                     }
                 }
 
-                self.store.unregister_interest(&self.client_id)?;
+                self.store.unregister_interest(&client_id)?;
             }
 
             CommandType::Type => {
@@ -401,8 +438,7 @@ impl WorkerTask {
 
                 match timeout {
                     Some(to) => {
-                        let receiver =
-                            self.store.register_interest(self.client_id.clone(), keys)?;
+                        let receiver = self.store.register_interest(client_id.clone(), keys)?;
 
                         if to == 0 {
                             if let Ok(v) = receiver.recv().await {
@@ -426,7 +462,7 @@ impl WorkerTask {
                             }
                         }
 
-                        self.store.unregister_interest(&self.client_id)?;
+                        self.store.unregister_interest(&client_id)?;
                     }
                     None => {
                         let store = self.store.stream_reader()?;
@@ -451,14 +487,14 @@ impl WorkerTask {
 
             CommandType::Multi => {
                 let mut writer = self.store.transaction_writer()?;
-                writer.create_transaction(&self.client_id);
+                writer.create_transaction(&client_id);
                 response.push(Value::ok());
             }
 
             CommandType::Exec => {
                 let txn = {
                     let mut writer = self.store.transaction_writer()?;
-                    match writer.remove_transaction(&self.client_id) {
+                    match writer.remove_transaction(&client_id) {
                         Some(txn) => txn,
                         None => {
                             response.push(Value::error("ERR EXEC without MULTI".into()));
@@ -469,7 +505,7 @@ impl WorkerTask {
 
                 let mut results = Vec::new();
                 for cmd in txn.commands() {
-                    results.push(Box::pin(self.execute_command(cmd)).await?);
+                    results.push(Box::pin(self.execute_command(cmd, client_id.clone())).await?);
                 }
 
                 response = results.into_iter().flatten().collect();
@@ -482,7 +518,7 @@ impl WorkerTask {
 
             CommandType::Discard => {
                 let mut writer = self.store.transaction_writer()?;
-                match writer.remove_transaction(&self.client_id) {
+                match writer.remove_transaction(&client_id) {
                     Some(_) => response.push(Value::ok()),
                     None => response.push(Value::error("ERR DISCARD without MULTI".into())),
                 }
@@ -495,7 +531,7 @@ impl WorkerTask {
                     "replication" => {
                         let info_string = format!(
                             "role:{}\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0",
-                            self.server_role
+                            self.role
                         );
                         response.push(Value::String(info_string.into()));
                     }
@@ -516,6 +552,7 @@ impl WorkerTask {
 
                 let rdb = empty_rdb()?;
                 response.push(Value::Rdb(rdb));
+                self.connection_type = ConnectionType::Replica;
             }
         }
 

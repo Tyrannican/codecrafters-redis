@@ -132,6 +132,7 @@ impl Transaction {
 pub struct RedisCommand {
     pub cmd: CommandType,
     pub args: Vec<Bytes>,
+    pub raw: Value,
 }
 
 impl RedisCommand {
@@ -164,6 +165,7 @@ impl RedisCommand {
         Ok(Self {
             cmd: cmd_type,
             args,
+            raw: inc_cmd.clone(),
         })
     }
 }
@@ -190,6 +192,9 @@ pub enum RedisError {
 
     #[error("unable to send value across channel")]
     ChannelSendError,
+
+    #[error("error receiving response from channel - {0}")]
+    ChannelRecvError(String),
 
     #[error("unsupported command - '{0}'")]
     UnsupportedCommand(String),
