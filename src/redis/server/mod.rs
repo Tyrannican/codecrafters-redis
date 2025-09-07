@@ -16,6 +16,7 @@ const WORKER_COUNT: usize = 10;
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 
+#[derive(Debug, PartialEq)]
 pub enum ServerRole {
     Master,
     Replica((String, u16)),
@@ -59,15 +60,20 @@ impl RedisServer {
     }
 
     pub fn start(&mut self, receiver: AsyncReceiver<Request>) {
-        if let Some((master_addr, master_port)) = self.role.replica_address() {
-            let port = self.port;
-            let store = Arc::clone(&self.store);
-            tokio::task::spawn(async move {
-                let mut master_connection =
-                    ReplicaMasterConnection::new(master_addr, master_port, port, store).await?;
+        match self.role.replica_address() {
+            Some((master_addr, master_port)) => {
+                let port = self.port;
+                let store = Arc::clone(&self.store);
+                tokio::task::spawn(async move {
+                    let mut master_connection =
+                        ReplicaMasterConnection::new(master_addr, master_port, port, store).await?;
 
-                master_connection.replicate().await
-            });
+                    master_connection.replicate().await
+                });
+            }
+            None => {
+                tokio::task::spawn(async move { replication_handler().await });
+            }
         }
 
         for i in 0..self.worker_count {
@@ -82,6 +88,10 @@ impl RedisServer {
 
         // TODO: Some kind of recovery mechanism
     }
+}
+
+async fn replication_handler() -> Result<(), RedisError> {
+    Ok(())
 }
 
 pub struct Worker {
@@ -135,26 +145,34 @@ impl Worker {
         request: Value,
         client_id: Bytes,
     ) -> Result<Vec<Value>, RedisError> {
-        let mut response = Vec::new();
         let request = RedisCommand::new(&request)?;
+        let response = match self.check_transaction(&request, &client_id)? {
+            Some(response) => response,
+            None => self.execute_command(request, client_id).await?,
+        };
 
-        {
-            let mut txn_writer = self.store.transaction_writer()?;
-            if txn_writer.has_transaction(&client_id) {
-                match request.cmd {
-                    CommandType::Exec | CommandType::Discard => {}
-                    _ => {
-                        txn_writer.add_to_transaction(&client_id, request);
-                        response.push(Value::SimpleString("QUEUED".into()));
-                        return Ok(response);
-                    }
+        Ok(response)
+    }
+
+    fn check_transaction(
+        &mut self,
+        request: &RedisCommand,
+        client_id: &Bytes,
+    ) -> Result<Option<Vec<Value>>, RedisError> {
+        let mut response = Vec::new();
+        let mut txn_writer = self.store.transaction_writer()?;
+        if txn_writer.has_transaction(&client_id) {
+            match request.cmd {
+                CommandType::Exec | CommandType::Discard => return Ok(None),
+                _ => {
+                    txn_writer.add_to_transaction(&client_id, request.clone());
+                    response.push(Value::SimpleString("QUEUED".into()));
+                    return Ok(Some(response));
                 }
             }
         }
 
-        let response = self.execute_command(request, client_id).await?;
-
-        Ok(response)
+        Ok(None)
     }
 
     async fn execute_command(

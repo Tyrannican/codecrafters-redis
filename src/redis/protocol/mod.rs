@@ -128,7 +128,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RedisCommand {
     pub cmd: CommandType,
     pub args: Vec<Bytes>,

@@ -41,32 +41,42 @@ impl ConnectionHandler {
         let (tx, rx) = unbounded_async::<Vec<Value>>();
 
         loop {
-            while let Some(frame) = self.stream.next().await {
-                match frame {
-                    Ok(value) => {
-                        self.request_channel
-                            .send((value, self.id.clone(), tx.clone()))
-                            .await?;
+            tokio::select! {
+                incoming_value = self.stream.next() => {
+                    match incoming_value {
+                        Some(Ok(value)) => {
+                            self.request_channel.send((value, self.id.clone(), tx.clone())).await?;
+                            let Ok(response) = rx.recv().await else {
+                                self.stream.send(Value::error("error occurrec receiving value".into())).await?;
+                                continue;
+                            };
 
-                        let Ok(response) = rx.recv().await else {
-                            self.stream
-                                .send(Value::error("error occurred receiving value".into()))
-                                .await?;
-
-                            continue;
-                        };
-
-                        for r in response {
-                            self.stream.send(r).await?;
+                            for r in response {
+                                self.stream.send(r).await?;
+                            }
+                        },
+                        Some(Err(e)) => {
+                            eprintln!("{e:#?}");
+                            break;
                         }
+                        None => continue,
                     }
-                    Err(e) => {
-                        eprintln!("{e:#?}");
-                        break;
+                }
+
+                outgoing_response = rx.recv() => {
+                    let Ok(response) = outgoing_response else {
+                        self.stream.send(Value::error("error occurred receiving value".into())).await?;
+                        continue;
+                    };
+
+                    for r in response {
+                        self.stream.send(r).await?;
                     }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
