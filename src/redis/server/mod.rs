@@ -3,10 +3,6 @@ use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 use kanal::{AsyncReceiver, AsyncSender};
-use tokio::sync::broadcast;
-use tokio::sync::broadcast::error::TryRecvError;
-use tokio::sync::broadcast::Receiver as BroadcastReceiver;
-use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::task::JoinHandle;
 
 use super::protocol::{CommandType, RedisCommand, RedisError, Value};
@@ -19,14 +15,6 @@ use replica::ReplicaMasterConnection;
 const WORKER_COUNT: usize = 10;
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
-type Broadcaster = (BroadcastSender<Value>, BroadcastReceiver<Value>);
-
-#[derive(Debug, Copy, Clone, PartialEq, Default)]
-pub enum ConnectionType {
-    #[default]
-    Client,
-    Replica,
-}
 
 pub enum ServerRole {
     Master,
@@ -82,21 +70,17 @@ impl RedisServer {
             });
         }
 
-        let (repl_sender, _repl_receiver) = broadcast::channel::<Value>(100);
         for i in 0..self.worker_count {
             let rx = receiver.clone();
             let store = Arc::clone(&self.store);
             let role = Arc::clone(&self.role);
-            let mut worker = Worker::new(
-                store,
-                role,
-                rx,
-                (repl_sender.clone(), repl_sender.subscribe()),
-            );
+            let mut worker = Worker::new(store, role, rx);
             let handle = tokio::task::spawn(async move { worker.start().await });
 
             self.pool.insert(i, handle);
         }
+
+        // TODO: Some kind of recovery mechanism
     }
 }
 
@@ -104,8 +88,6 @@ pub struct Worker {
     store: Arc<GlobalStore>,
     role: Arc<ServerRole>,
     receiver: AsyncReceiver<Request>,
-    connection_type: ConnectionType,
-    broadcaster: Broadcaster,
 }
 
 impl Worker {
@@ -113,21 +95,16 @@ impl Worker {
         store: Arc<GlobalStore>,
         role: Arc<ServerRole>,
         receiver: AsyncReceiver<Request>,
-        broadcaster: Broadcaster,
     ) -> Self {
         Self {
             store,
             role,
             receiver,
-            broadcaster,
-            connection_type: ConnectionType::default(),
         }
     }
 
     pub async fn start(&mut self) -> Result<(), RedisError> {
         while let Ok((req, client_id, responder)) = self.receiver.recv().await {
-            let recv = &self.broadcaster.1;
-            dbg!(recv.is_empty(), recv.len());
             match self.process_request(req, client_id).await {
                 Ok(response) => {
                     responder
@@ -221,11 +198,6 @@ impl Worker {
                     Ok(_) => response.push(Value::ok()),
                     Err(e) => response.push(Value::Error(e.to_string().into())),
                 }
-
-                let repl_sender = &self.broadcaster.0;
-                repl_sender
-                    .send(request.raw)
-                    .map_err(|_| RedisError::ChannelSendError)?;
             }
             CommandType::RPush => {
                 validate_args_len(&request, 2)?;
@@ -552,7 +524,6 @@ impl Worker {
 
                 let rdb = empty_rdb()?;
                 response.push(Value::Rdb(rdb));
-                self.connection_type = ConnectionType::Replica;
             }
         }
 
