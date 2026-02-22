@@ -85,8 +85,6 @@ impl RedisServer {
 
             self.pool.insert(i, handle);
         }
-
-        // TODO: Some kind of recovery mechanism
     }
 }
 
@@ -145,7 +143,13 @@ impl Worker {
         request: Value,
         client_id: Bytes,
     ) -> Result<Vec<Value>, RedisError> {
+        eprintln!(
+            "CLIENT ID: {:?}",
+            String::from_utf8(client_id.to_vec()).expect("AHH")
+        );
+        eprintln!("REQ: {request:?}");
         let request = RedisCommand::new(&request)?;
+        eprintln!("RAW: {:?}", request.raw);
         let response = match self.check_transaction(&request, &client_id)? {
             Some(response) => response,
             None => self.execute_command(request, client_id).await?,
