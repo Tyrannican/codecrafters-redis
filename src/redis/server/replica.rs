@@ -34,7 +34,7 @@ impl ReplicaMasterConnection {
 
     async fn handshake(&mut self) -> Result<(), RedisError> {
         self.stream
-            .send(Value::Array(vec![Value::SimpleString("PING".into())]))
+            .send(Value::Array(vec![Value::String("PING".into())]))
             .await?;
 
         let _ = self.stream.next().await;
