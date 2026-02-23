@@ -14,23 +14,30 @@ struct Interest {
 
 pub struct Notifier {
     clients: BTreeMap<Bytes, Interest>,
+    pub backlog: Vec<Bytes>,
 }
 
 impl Notifier {
     pub fn new() -> Self {
         Self {
             clients: BTreeMap::default(),
+            backlog: Vec::new(),
         }
+    }
+
+    pub fn add_to_backlog(&mut self, item: Bytes) {
+        self.backlog.push(item);
     }
 
     pub fn register_client(&mut self, id: Bytes, interest: &[Bytes]) -> AsyncReceiver<Bytes> {
         let (sender, receiver) = kanal::unbounded_async();
+
         self.clients.insert(
             id,
             Interest {
                 interest: BTreeSet::from_iter(interest.iter().cloned()),
                 timestamp: Instant::now(),
-                sender,
+                sender: sender.clone(),
             },
         );
 

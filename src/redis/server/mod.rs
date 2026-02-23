@@ -275,6 +275,9 @@ impl Worker {
                         .send(key.clone())
                         .await
                         .map_err(|_| RedisError::ChannelSendError)?;
+                } else {
+                    let mut notifier = self.store.notifier_writer()?;
+                    notifier.add_to_backlog(key.clone());
                 }
 
                 response.push(Value::Integer(size as i64));
@@ -354,7 +357,10 @@ impl Worker {
                 let keys = &request.args[..&request.args.len() - 1];
                 let timeout = &request.args.last().unwrap();
                 // FIXME: Issue here is that the RPUSH is happening before we register
-                let rx = self.store.register_interest(client_id.clone(), keys)?;
+                let rx = self
+                    .store
+                    .register_interest(client_id.clone(), keys)
+                    .await?;
 
                 let timeout = bytes_to_number::<f64>(timeout)?;
                 if timeout == 0.0 {
@@ -386,7 +392,21 @@ impl Worker {
                             }
                         }
                         _ => {
-                            response.push(Value::NullArray);
+                            let mut notifier = self.store.notifier_writer()?;
+                            let mut writer = self.store.list_writer()?;
+                            if !notifier.backlog.is_empty() {
+                                for key in notifier.backlog.drain(..) {
+                                    match writer.remove_single(&key) {
+                                        Some(value) => response.push(Value::Array(vec![
+                                            Value::String(key.clone()),
+                                            Value::String(value),
+                                        ])),
+                                        None => response.push(Value::NullArray),
+                                    }
+                                }
+                            } else {
+                                response.push(Value::NullArray);
+                            }
                         }
                     }
                 }
@@ -471,7 +491,10 @@ impl Worker {
 
                 match timeout {
                     Some(to) => {
-                        let receiver = self.store.register_interest(client_id.clone(), keys)?;
+                        let receiver = self
+                            .store
+                            .register_interest(client_id.clone(), keys)
+                            .await?;
 
                         if to == 0 {
                             if let Ok(v) = receiver.recv().await {

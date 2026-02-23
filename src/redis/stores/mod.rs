@@ -36,7 +36,7 @@ impl GlobalStore {
         }
     }
 
-    pub fn register_interest(
+    pub async fn register_interest(
         &self,
         id: Bytes,
         interest: &[Bytes],
@@ -56,6 +56,14 @@ impl GlobalStore {
     pub fn client_sender(&self, msg: &Bytes) -> Result<Option<AsyncSender<Bytes>>, RedisError> {
         let notifier = self.notifier.read().map_err(|_| RedisError::ReadLock)?;
         Ok(notifier.client_sender(msg))
+    }
+
+    pub fn notifier_reader(&self) -> Result<RwLockReadGuard<'_, Notifier>, RedisError> {
+        self.notifier.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn notifier_writer(&self) -> Result<RwLockWriteGuard<'_, Notifier>, RedisError> {
+        self.notifier.write().map_err(|_| RedisError::WriteLock)
     }
 
     pub fn map_reader(&self) -> Result<RwLockReadGuard<'_, MapStore>, RedisError> {
