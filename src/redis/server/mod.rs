@@ -150,7 +150,7 @@ impl Worker {
         let request = RedisCommand::new(&request)?;
         self.add_replica(request.cmd, client_id.clone(), responder)
             .await;
-        self.replicate(&request).await;
+        self.replicate(&request).await?;
         let response = match self.check_transaction(&request, &client_id)? {
             Some(response) => response,
             None => self.execute_command(&request, client_id).await?,
@@ -159,16 +159,21 @@ impl Worker {
         Ok(response)
     }
 
-    async fn replicate(&self, request: &RedisCommand) {
+    async fn replicate(&self, request: &RedisCommand) -> Result<(), RedisError> {
         match request.cmd {
             CommandType::Set => {
                 let replicas = self.replicas.read().await;
                 for sender in replicas.values() {
-                    sender.send(vec![request.raw.clone()]).await.expect("jdhf");
+                    sender
+                        .send(vec![request.raw.clone()])
+                        .await
+                        .map_err(|_| RedisError::ChannelSendError)?;
                 }
             }
             _ => {}
         }
+
+        Ok(())
     }
 
     async fn add_replica(
@@ -266,7 +271,6 @@ impl Worker {
                 }
 
                 if let Some(sender) = self.store.client_sender(key)? {
-                    eprintln!("RPUSH - SENDING KEY: {key:?}");
                     sender
                         .send(key.clone())
                         .await
@@ -349,9 +353,9 @@ impl Worker {
                 validate_args_len(&request, 2)?;
                 let keys = &request.args[..&request.args.len() - 1];
                 let timeout = &request.args.last().unwrap();
+                // FIXME: Issue here is that the RPUSH is happening before we register
                 let rx = self.store.register_interest(client_id.clone(), keys)?;
 
-                eprintln!("REGISTERED INTEREST KEYS: {keys:?}");
                 let timeout = bytes_to_number::<f64>(timeout)?;
                 if timeout == 0.0 {
                     let key = rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
@@ -364,9 +368,8 @@ impl Worker {
                         None => response.push(Value::NullString),
                     }
                 } else {
-                    // HAX - Change this back to 1000.0
                     match tokio::time::timeout(
-                        Duration::from_millis((timeout * 4000.0) as u64),
+                        Duration::from_millis((timeout * 1000.0) as u64),
                         rx.recv(),
                     )
                     .await
