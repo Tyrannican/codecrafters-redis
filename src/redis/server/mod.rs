@@ -266,6 +266,7 @@ impl Worker {
                 }
 
                 if let Some(sender) = self.store.client_sender(key)? {
+                    eprintln!("RPUSH - SENDING KEY: {key:?}");
                     sender
                         .send(key.clone())
                         .await
@@ -350,6 +351,7 @@ impl Worker {
                 let timeout = &request.args.last().unwrap();
                 let rx = self.store.register_interest(client_id.clone(), keys)?;
 
+                eprintln!("REGISTERED INTEREST KEYS: {keys:?}");
                 let timeout = bytes_to_number::<f64>(timeout)?;
                 if timeout == 0.0 {
                     let key = rx.recv().await.map_err(|_| RedisError::ChannelSendError)?;
@@ -362,8 +364,9 @@ impl Worker {
                         None => response.push(Value::NullString),
                     }
                 } else {
+                    // HAX - Change this back to 1000.0
                     match tokio::time::timeout(
-                        Duration::from_millis((timeout * 1000.0) as u64),
+                        Duration::from_millis((timeout * 4000.0) as u64),
                         rx.recv(),
                     )
                     .await
@@ -379,7 +382,9 @@ impl Worker {
                                 None => response.push(Value::NullArray),
                             }
                         }
-                        _ => response.push(Value::NullArray),
+                        _ => {
+                            response.push(Value::NullArray);
+                        }
                     }
                 }
 
