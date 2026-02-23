@@ -82,6 +82,8 @@ impl ReplicaMasterConnection {
                         _ => {
                             if !holder.is_empty() {
                                 let broken_cmd = RedisCommand::new(&Value::Array(holder.clone()))?;
+                                holder.clear();
+
                                 let cmd = RedisCommand::new(&value)?;
                                 self.process_command(broken_cmd).await?;
                                 self.process_command(cmd).await?;
