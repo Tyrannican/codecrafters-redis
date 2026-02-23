@@ -6,8 +6,9 @@ use tokio::net::TcpStream;
 use tokio_util::codec::Framed;
 
 use crate::redis::{
-    protocol::{RedisError, RespProtocol, Value},
+    protocol::{CommandType, RedisCommand, RedisError, RespProtocol, Value},
     stores::GlobalStore,
+    utils::validate_args_len,
 };
 
 pub struct ReplicaMasterConnection {
@@ -62,24 +63,63 @@ impl ReplicaMasterConnection {
         ];
         self.stream.send(Value::Array(psync)).await?;
         let _ = self.stream.next().await;
+        let _rdb = self.stream.next().await;
 
         Ok(())
     }
 
     pub async fn replicate(&mut self) -> Result<(), RedisError> {
         self.handshake().await?;
+        let mut holder = Vec::new();
+
+        // FIXME: The Command is broken after RDB is sent so we need to gather it up
         while let Some(frame) = self.stream.next().await {
             match frame {
-                Ok(_value) => {
-                    todo!("handle replication")
+                Ok(value) => {
+                    eprintln!("RAW: {value:?}");
+                    match value {
+                        Value::String(_) => holder.push(value.clone()),
+                        _ => {
+                            if !holder.is_empty() {
+                                let broken_cmd = RedisCommand::new(&Value::Array(holder.clone()))?;
+                                let cmd = RedisCommand::new(&value)?;
+                                self.process_command(broken_cmd).await?;
+                                self.process_command(cmd).await?;
+                            } else {
+                                let cmd = RedisCommand::new(&value)?;
+                                self.process_command(cmd).await?;
+                            }
+                        }
+                    }
                 }
                 Err(e) => {
-                    eprintln!("{e:#?}");
+                    eprintln!("REPL PARSE ERROR {e:#?}");
                     break;
                 }
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn process_command(&self, request: RedisCommand) -> Result<(), RedisError> {
+        match request.cmd {
+            CommandType::Set => {
+                validate_args_len(&request, 2)?;
+
+                let key = &request.args[0];
+                let value = &request.args[1];
+                let ttl = if request.args.len() == 4 {
+                    Some(request.args[3].clone())
+                } else {
+                    None
+                };
+
+                let mut store = self.store.map_writer()?;
+                store.set(key, value, ttl)?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 }

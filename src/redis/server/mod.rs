@@ -79,9 +79,6 @@ impl RedisServer {
             }
         }
 
-        // TODO: Add a store of ID -> Responder for Replicas
-        // When a Handshake has occurred, add the responder to the Map
-        // When a Write command is processed, send it to all Replicas in the Map
         let replicas: ReplicaStore = Arc::new(RwLock::new(HashMap::new()));
 
         for i in 0..self.worker_count {

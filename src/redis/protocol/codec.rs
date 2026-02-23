@@ -46,18 +46,29 @@ impl InterimValue {
     }
 }
 
-fn parse(buf: &BytesMut, pos: usize) -> ProtocolResult {
+fn parse(buf: &BytesMut, mut pos: usize) -> ProtocolResult {
     if buf.is_empty() {
         return Ok(None);
     }
 
-    let idx = pos + 1;
-    match buf[pos] {
-        b'+' => simple_string(buf, idx),
-        b'$' => bulk_string(buf, idx),
-        b':' => integer(buf, idx),
-        b'*' => array(buf, idx),
-        b => Err(RedisError::InvalidProtocolByte(b as char)),
+    loop {
+        let idx = pos + 1;
+        match buf[pos] {
+            b'+' => return simple_string(buf, idx),
+            b'$' => return bulk_string(buf, idx),
+            b':' => return integer(buf, idx),
+            b'*' => return array(buf, idx),
+            b'\r' | b'\n' => {
+                if buf[pos] == b'\r' {
+                    pos += 2;
+                } else {
+                    pos += 1;
+                }
+
+                continue;
+            }
+            b => return Err(RedisError::InvalidProtocolByte(b as char)),
+        }
     }
 }
 
