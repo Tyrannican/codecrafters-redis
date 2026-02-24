@@ -12,6 +12,7 @@ use crate::redis::{
 };
 
 pub struct ReplicaMasterConnection {
+    offset: usize,
     repl_port: u16,
     stream: Framed<TcpStream, RespProtocol>,
     store: Arc<GlobalStore>,
@@ -28,6 +29,7 @@ impl ReplicaMasterConnection {
 
         Ok(Self {
             store,
+            offset: 0,
             repl_port,
             stream: Framed::new(stream, RespProtocol),
         })
@@ -68,31 +70,50 @@ impl ReplicaMasterConnection {
         Ok(())
     }
 
+    // HAX: This is rotten but meh
+    async fn catch_trailing(&mut self) -> Result<(), RedisError> {
+        let mut fragments = Vec::new();
+        while let Some(frame) = self.stream.next().await {
+            match frame {
+                Ok(value) => match &value {
+                    Value::String(_) => {
+                        fragments.push(value);
+                        if fragments.len() < 3 {
+                            continue;
+                        }
+
+                        match RedisCommand::new(&Value::Array(fragments.clone())) {
+                            Ok(cmd) => {
+                                self.process_command(cmd).await?;
+                                break;
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                    _ => {
+                        eprintln!("SOMETHING WRONG WITH TRAILING COMMAND");
+                    }
+                },
+                Err(e) => {
+                    eprintln!("REPL ERROR: {e:?}");
+                    return Err(RedisError::UnexpectedValue);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn replicate(&mut self) -> Result<(), RedisError> {
         self.handshake().await?;
-        let mut holder = Vec::new();
+        self.catch_trailing().await?;
 
-        // FIXME: The Command is broken after RDB is sent so we need to gather it up
         while let Some(frame) = self.stream.next().await {
             match frame {
                 Ok(value) => {
                     eprintln!("RAW: {value:?}");
-                    match value {
-                        Value::String(_) => holder.push(value.clone()),
-                        _ => {
-                            if !holder.is_empty() {
-                                let broken_cmd = RedisCommand::new(&Value::Array(holder.clone()))?;
-                                holder.clear();
-
-                                let cmd = RedisCommand::new(&value)?;
-                                self.process_command(broken_cmd).await?;
-                                self.process_command(cmd).await?;
-                            } else {
-                                let cmd = RedisCommand::new(&value)?;
-                                self.process_command(cmd).await?;
-                            }
-                        }
-                    }
+                    let cmd = RedisCommand::new(&value)?;
+                    self.process_command(cmd).await?;
                 }
                 Err(e) => {
                     eprintln!("REPL PARSE ERROR {e:#?}");
@@ -104,7 +125,7 @@ impl ReplicaMasterConnection {
         Ok(())
     }
 
-    pub async fn process_command(&self, request: RedisCommand) -> Result<(), RedisError> {
+    pub async fn process_command(&mut self, request: RedisCommand) -> Result<(), RedisError> {
         match request.cmd {
             CommandType::Set => {
                 validate_args_len(&request, 2)?;
@@ -119,6 +140,21 @@ impl ReplicaMasterConnection {
 
                 let mut store = self.store.map_writer()?;
                 store.set(key, value, ttl)?;
+            }
+
+            CommandType::ReplConf => {
+                validate_args_len(&request, 2)?;
+                let arg = &request.args[0];
+                let _value = &request.args[1];
+                if **arg == *b"GETACK" {
+                    let value = format!("{}", self.offset);
+                    let response = Value::Array(vec![
+                        Value::String("REPLCONF".into()),
+                        Value::String("ACK".into()),
+                        Value::String(value.into()),
+                    ]);
+                    self.stream.send(response).await?;
+                }
             }
             _ => {}
         }
