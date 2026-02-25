@@ -111,8 +111,8 @@ impl ReplicaMasterConnection {
         while let Some(frame) = self.stream.next().await {
             match frame {
                 Ok(value) => {
-                    eprintln!("RAW: {value:?}");
                     let cmd = RedisCommand::new(&value)?;
+                    eprintln!("RAW: {value:?} CMD SIZE: {}", cmd.size());
                     self.process_command(cmd).await?;
                 }
                 Err(e) => {
@@ -158,6 +158,8 @@ impl ReplicaMasterConnection {
             }
             _ => {}
         }
+
+        self.offset += request.size();
         Ok(())
     }
 }

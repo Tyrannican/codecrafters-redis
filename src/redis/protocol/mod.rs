@@ -104,6 +104,28 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn size(&self) -> usize {
+        match self {
+            Self::String(inner) => {
+                let repr = format!("${}\r\n\r\n", inner.len());
+                return repr.len() + inner.len();
+            }
+            Self::SimpleString(inner) | Self::Error(inner) => {
+                return "+\r\n".len() + inner.len();
+            }
+            Self::NullString | Self::NullArray => return "$-1\r\n".len(),
+            Self::EmptyArray => return "*0\r\n".len(),
+            Self::Integer(inner) => {
+                return format!(":{}\r\n", inner).len();
+            }
+            Self::Array(inner) => {
+                let count = inner.iter().map(|s| s.size()).sum::<usize>();
+                return format!("*{}\r\n", inner.len()).len() + count;
+            }
+            Self::Rdb(inner) => return format!("${}\r\n", inner.len()).len(),
+        }
+    }
+
     pub fn ok() -> Self {
         Value::SimpleString("OK".into())
     }
@@ -168,6 +190,10 @@ impl RedisCommand {
             raw: inc_cmd.clone(),
         })
     }
+
+    pub fn size(&self) -> usize {
+        self.raw.size()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -193,6 +219,7 @@ pub enum RedisError {
     #[error("unable to send value across channel")]
     ChannelSendError,
 
+    #[allow(dead_code)]
     #[error("error receiving response from channel - {0}")]
     ChannelRecvError(String),
 

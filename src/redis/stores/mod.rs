@@ -58,6 +58,7 @@ impl GlobalStore {
         Ok(notifier.client_sender(msg))
     }
 
+    #[allow(dead_code)]
     pub fn notifier_reader(&self) -> Result<RwLockReadGuard<'_, Notifier>, RedisError> {
         self.notifier.read().map_err(|_| RedisError::ReadLock)
     }
