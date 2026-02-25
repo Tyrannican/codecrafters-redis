@@ -606,6 +606,17 @@ impl Worker {
                 let rdb = empty_rdb()?;
                 response.push(Value::Rdb(rdb));
             }
+
+            CommandType::Wait => {
+                validate_args_len(&request, 2)?;
+                let num_replicas = bytes_to_number::<usize>(&request.args[0])?;
+                let wait_time = bytes_to_number::<usize>(&request.args[1])?;
+                if num_replicas == 0 {
+                    response.push(Value::Integer(0));
+                } else {
+                    //
+                }
+            }
         }
 
         Ok(response)

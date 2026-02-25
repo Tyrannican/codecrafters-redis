@@ -29,6 +29,7 @@ pub enum CommandType {
     Info,
     ReplConf,
     Psync,
+    Wait,
 }
 
 impl CommandType {
@@ -56,6 +57,7 @@ impl CommandType {
             "info" => Ok(Self::Info),
             "replconf" => Ok(Self::ReplConf),
             "psync" => Ok(Self::Psync),
+            "wait" => Ok(Self::Wait),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -86,6 +88,7 @@ impl std::fmt::Display for CommandType {
             Self::Info => write!(f, "info"),
             Self::ReplConf => write!(f, "replconf"),
             Self::Psync => write!(f, "psync"),
+            Self::Wait => write!(f, "wait"),
         }
     }
 }
