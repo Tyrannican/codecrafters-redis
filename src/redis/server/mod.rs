@@ -599,6 +599,7 @@ impl Worker {
 
             CommandType::Psync => {
                 // TODO: Flesh out when required
+                self.store.add_replica();
                 response.push(Value::SimpleString(
                     "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into(),
                 ));
@@ -610,11 +611,12 @@ impl Worker {
             CommandType::Wait => {
                 validate_args_len(&request, 2)?;
                 let num_replicas = bytes_to_number::<usize>(&request.args[0])?;
-                let wait_time = bytes_to_number::<usize>(&request.args[1])?;
+                let _wait_time = bytes_to_number::<usize>(&request.args[1])?;
                 if num_replicas == 0 {
                     response.push(Value::Integer(0));
                 } else {
-                    //
+                    let actual_replicas = self.store.replica_count();
+                    response.push(Value::Integer(actual_replicas as i64));
                 }
             }
         }

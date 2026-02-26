@@ -13,11 +13,15 @@ use stream::StreamStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
 
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 
 use super::protocol::RedisError;
 
 pub struct GlobalStore {
+    replicas: AtomicUsize,
     notifier: RwLock<Notifier>,
     maps: RwLock<MapStore>,
     lists: RwLock<ListStore>,
@@ -28,6 +32,7 @@ pub struct GlobalStore {
 impl GlobalStore {
     pub fn new() -> Self {
         Self {
+            replicas: AtomicUsize::new(0),
             notifier: RwLock::new(Notifier::new()),
             maps: RwLock::new(MapStore::new()),
             lists: RwLock::new(ListStore::new()),
@@ -56,6 +61,14 @@ impl GlobalStore {
     pub fn client_sender(&self, msg: &Bytes) -> Result<Option<AsyncSender<Bytes>>, RedisError> {
         let notifier = self.notifier.read().map_err(|_| RedisError::ReadLock)?;
         Ok(notifier.client_sender(msg))
+    }
+
+    pub fn add_replica(&self) {
+        self.replicas.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn replica_count(&self) -> usize {
+        self.replicas.load(Ordering::SeqCst)
     }
 
     #[allow(dead_code)]
