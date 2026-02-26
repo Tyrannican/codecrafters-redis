@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::BTreeMap, time::Duration};
 use tokio::sync::RwLock;
@@ -53,14 +54,14 @@ pub struct RedisServer {
 }
 
 impl RedisServer {
-    pub fn new(role: ServerRole, port: u16) -> Self {
-        Self {
+    pub fn new(role: ServerRole, port: u16) -> Result<Self, RedisError> {
+        Ok(Self {
             port,
             role: Arc::new(role),
             worker_count: WORKER_COUNT,
             pool: BTreeMap::new(),
             store: Arc::new(GlobalStore::new()),
-        }
+        })
     }
 
     pub fn start(&mut self, receiver: AsyncReceiver<Request>) {
@@ -97,6 +98,39 @@ impl RedisServer {
             self.pool.insert(i, handle);
         }
         drop(acknowledger);
+    }
+
+    pub fn init(
+        &self,
+        working_dir: Option<PathBuf>,
+        dbfile: Option<PathBuf>,
+    ) -> Result<(), RedisError> {
+        let mut rdb = self.store.rdb_writer()?;
+        let mut cfg = self.store.config_writer()?;
+
+        match working_dir {
+            Some(working_dir) => {
+                let wd = working_dir.display().to_string();
+                cfg.set(&"dir".into(), &wd.into(), None)?;
+
+                match dbfile {
+                    Some(dbfile) => {
+                        let db = dbfile.display().to_string();
+                        cfg.set(&"dbfilename".into(), &db.into(), None)?;
+                        let fp = working_dir.join(dbfile);
+                        rdb.load(Some(fp))?;
+                    }
+                    None => {
+                        rdb.load(None)?;
+                    }
+                }
+            }
+            None => {
+                rdb.load(None)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -655,6 +689,28 @@ impl Worker {
                         response.push(Value::Integer(collected.len() as i64));
                     }
                 }
+            }
+
+            CommandType::Config => {
+                validate_args_len(&request, 2)?;
+                let cmd = &request.args[0];
+                let rest = &request.args[1..];
+
+                let mut values = vec![];
+                if **cmd == *b"GET" {
+                    let cfg = self.store.config_reader()?;
+                    for key in rest.iter() {
+                        match cfg.get(key) {
+                            Some(value) => {
+                                values.push(Value::String(key.clone()));
+                                values.push(Value::String(value.clone()));
+                            }
+                            None => {}
+                        }
+                    }
+                }
+
+                response.push(Value::Array(values));
             }
         }
 

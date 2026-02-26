@@ -2,6 +2,7 @@ mod list;
 mod map;
 mod notifier;
 mod queue;
+mod rdb;
 mod stream;
 
 use bytes::Bytes;
@@ -9,6 +10,7 @@ use list::ListStore;
 use map::MapStore;
 use notifier::Notifier;
 use queue::TransactionStore;
+use rdb::RdbFile;
 use stream::StreamStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
@@ -27,6 +29,8 @@ pub struct GlobalStore {
     lists: RwLock<ListStore>,
     streams: RwLock<StreamStore>,
     txns: RwLock<TransactionStore>,
+    rdb: RwLock<RdbFile>,
+    config: RwLock<MapStore>,
 }
 
 impl GlobalStore {
@@ -38,6 +42,8 @@ impl GlobalStore {
             lists: RwLock::new(ListStore::new()),
             streams: RwLock::new(StreamStore::new()),
             txns: RwLock::new(TransactionStore::new()),
+            rdb: RwLock::new(RdbFile::new()),
+            config: RwLock::new(MapStore::new()),
         }
     }
 
@@ -110,6 +116,22 @@ impl GlobalStore {
 
     pub fn transaction_writer(&self) -> Result<RwLockWriteGuard<'_, TransactionStore>, RedisError> {
         self.txns.write().map_err(|_| RedisError::WriteLock)
+    }
+
+    pub fn rdb_reader(&self) -> Result<RwLockReadGuard<'_, RdbFile>, RedisError> {
+        self.rdb.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn rdb_writer(&self) -> Result<RwLockWriteGuard<'_, RdbFile>, RedisError> {
+        self.rdb.write().map_err(|_| RedisError::WriteLock)
+    }
+
+    pub fn config_reader(&self) -> Result<RwLockReadGuard<'_, MapStore>, RedisError> {
+        self.config.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn config_writer(&self) -> Result<RwLockWriteGuard<'_, MapStore>, RedisError> {
+        self.config.write().map_err(|_| RedisError::WriteLock)
     }
 
     pub fn key_type(&self, key: &Bytes) -> Result<Bytes, RedisError> {

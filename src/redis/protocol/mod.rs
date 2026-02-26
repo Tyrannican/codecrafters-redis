@@ -30,6 +30,7 @@ pub enum CommandType {
     ReplConf,
     Psync,
     Wait,
+    Config,
 }
 
 impl CommandType {
@@ -58,6 +59,7 @@ impl CommandType {
             "replconf" => Ok(Self::ReplConf),
             "psync" => Ok(Self::Psync),
             "wait" => Ok(Self::Wait),
+            "config" => Ok(Self::Config),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -89,6 +91,7 @@ impl std::fmt::Display for CommandType {
             Self::ReplConf => write!(f, "replconf"),
             Self::Psync => write!(f, "psync"),
             Self::Wait => write!(f, "wait"),
+            Self::Config => write!(f, "config"),
         }
     }
 }
@@ -231,6 +234,9 @@ pub enum RedisError {
 
     #[error("insufficient arguments for '{0}'")]
     InsufficientArugments(CommandType),
+
+    #[error("file read error - '{0}'")]
+    FileRead(String),
 
     #[error("read lock error occurred")]
     ReadLock,

@@ -13,6 +13,8 @@ use redis::{
     server::{RedisServer, Request, ServerRole},
 };
 
+use std::path::PathBuf;
+
 #[derive(Parser)]
 struct Cli {
     #[arg(short, long, default_value_t = 6379)]
@@ -20,6 +22,12 @@ struct Cli {
 
     #[arg(long)]
     pub replicaof: Option<String>,
+
+    #[arg(long)]
+    pub dir: Option<PathBuf>,
+
+    #[arg(long)]
+    pub dbfilename: Option<PathBuf>,
 }
 
 struct ConnectionHandler {
@@ -112,8 +120,11 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(addr).await.unwrap();
     let (tx, rx) = unbounded_async::<Request>();
 
+    let working_dir = args.dir;
+    let dbfile = args.dbfilename;
     let role = determine_server_role(args.replicaof);
-    let mut server = RedisServer::new(role, args.port);
+    let mut server = RedisServer::new(role, args.port)?;
+    server.init(working_dir, dbfile)?;
     server.start(rx);
 
     loop {
