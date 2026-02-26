@@ -18,6 +18,7 @@ const WORKER_COUNT: usize = 10;
 
 pub type Request = (Value, Bytes, AsyncSender<Vec<Value>>);
 type ReplicaStore = Arc<RwLock<HashMap<Bytes, AsyncSender<Vec<Value>>>>>;
+type ReplicationAcknowledger = (AsyncSender<usize>, AsyncReceiver<usize>);
 
 #[derive(Debug, PartialEq)]
 pub enum ServerRole {
@@ -80,6 +81,7 @@ impl RedisServer {
         }
 
         let replicas: ReplicaStore = Arc::new(RwLock::new(HashMap::new()));
+        let acknowledger = kanal::unbounded_async::<usize>();
 
         for i in 0..self.worker_count {
             let mut worker = Worker {
@@ -87,12 +89,14 @@ impl RedisServer {
                 role: Arc::clone(&self.role),
                 receiver: receiver.clone(),
                 replicas: Arc::clone(&replicas),
+                acknowledger: acknowledger.clone(),
             };
 
             let handle = tokio::task::spawn(async move { worker.start().await });
 
             self.pool.insert(i, handle);
         }
+        drop(acknowledger);
     }
 }
 
@@ -105,6 +109,7 @@ pub struct Worker {
     role: Arc<ServerRole>,
     receiver: AsyncReceiver<Request>,
     replicas: ReplicaStore,
+    acknowledger: ReplicationAcknowledger,
 }
 
 impl Worker {
@@ -594,7 +599,12 @@ impl Worker {
 
             CommandType::ReplConf => {
                 // TODO: Flesh out when required
-                response.push(Value::ok());
+                if *request.args[0] == *b"ACK" {
+                    let value = bytes_to_number::<usize>(&request.args[1])?;
+                    let _ = self.acknowledger.0.send(value).await;
+                } else {
+                    response.push(Value::ok());
+                }
             }
 
             CommandType::Psync => {
@@ -611,12 +621,39 @@ impl Worker {
             CommandType::Wait => {
                 validate_args_len(&request, 2)?;
                 let num_replicas = bytes_to_number::<usize>(&request.args[0])?;
-                let _wait_time = bytes_to_number::<usize>(&request.args[1])?;
+                let wait_time = bytes_to_number::<usize>(&request.args[1])?;
                 if num_replicas == 0 {
                     response.push(Value::Integer(0));
                 } else {
-                    let actual_replicas = self.store.replica_count();
-                    response.push(Value::Integer(actual_replicas as i64));
+                    let reader = self.replicas.read().await;
+                    let replconf = Value::Array(vec![
+                        Value::String("REPLCONF".into()),
+                        Value::String("GETACK".into()),
+                        Value::String("*".into()),
+                    ]);
+                    for thing in reader.values() {
+                        let _ = thing.send(vec![replconf.clone()]).await;
+                    }
+
+                    let mut collected = Vec::new();
+                    let _ = tokio::time::timeout(
+                        tokio::time::Duration::from_millis(wait_time as u64),
+                        async {
+                            while collected.len() < num_replicas {
+                                match self.acknowledger.1.recv().await {
+                                    Ok(item) => collected.push(item),
+                                    Err(_) => break,
+                                }
+                            }
+                        },
+                    )
+                    .await;
+
+                    if collected.is_empty() {
+                        response.push(Value::Integer(self.store.replica_count() as i64));
+                    } else {
+                        response.push(Value::Integer(collected.len() as i64));
+                    }
                 }
             }
         }

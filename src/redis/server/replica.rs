@@ -112,7 +112,6 @@ impl ReplicaMasterConnection {
             match frame {
                 Ok(value) => {
                     let cmd = RedisCommand::new(&value)?;
-                    eprintln!("RAW: {value:?} CMD SIZE: {}", cmd.size());
                     self.process_command(cmd).await?;
                 }
                 Err(e) => {
