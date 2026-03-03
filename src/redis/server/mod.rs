@@ -10,7 +10,7 @@ use tokio::task::JoinHandle;
 
 use super::protocol::{CommandType, RedisCommand, RedisError, Value};
 use super::stores::GlobalStore;
-use super::utils::{bytes_to_number, empty_rdb, validate_args_len};
+use super::utils::{bytes_to_number, validate_args_len};
 
 mod replica;
 use replica::ReplicaMasterConnection;
@@ -632,7 +632,6 @@ impl Worker {
             }
 
             CommandType::ReplConf => {
-                // TODO: Flesh out when required
                 if *request.args[0] == *b"ACK" {
                     let value = bytes_to_number::<usize>(&request.args[1])?;
                     let _ = self.acknowledger.0.send(value).await;
@@ -642,14 +641,14 @@ impl Worker {
             }
 
             CommandType::Psync => {
-                // TODO: Flesh out when required
                 self.store.add_replica();
                 response.push(Value::SimpleString(
                     "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0".into(),
                 ));
 
-                let rdb = empty_rdb()?;
-                response.push(Value::Rdb(rdb));
+                let rdb = self.store.rdb_reader()?;
+                let rdb_file = rdb.raw();
+                response.push(Value::Rdb(rdb_file));
             }
 
             CommandType::Wait => {
