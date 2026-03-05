@@ -244,6 +244,9 @@ pub enum RedisError {
     #[error("write lock error occurred")]
     WriteLock,
 
+    #[error("redis parse error - '{0}'")]
+    RdbParse(String),
+
     #[error("stream error - '{0}'")]
     StreamIdError(String),
 

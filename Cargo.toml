@@ -12,6 +12,7 @@ futures-util = { version = "0.3.31", features = ["sink"] }
 hex = "0.4.3"
 kanal = "0.1.1"
 memchr = "2.7.5"
+nom = "8.0.0"
 thiserror = "1.0.32"                                # error handling
 tokio = { version = "1.23.0", features = ["full"] } # async networking
 tokio-stream = "0.1.17"
