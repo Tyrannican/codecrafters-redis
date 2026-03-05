@@ -1,6 +1,7 @@
 mod list;
 mod map;
 mod notifier;
+mod pubsub;
 mod queue;
 mod rdb;
 mod stream;
