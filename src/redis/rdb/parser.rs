@@ -5,7 +5,9 @@ use nom::{
     IResult,
 };
 
-use super::{RdbDatabase, RdbExpiry, RdbInner, RdbKeyValue, RdbValue};
+use super::{RdbDatabase, RdbDatabaseEntry, RdbExpiry, RdbInner, RdbKeyValue, RdbValue};
+
+use std::{collections::HashMap, time::Duration};
 
 #[derive(Debug)]
 enum LengthEncoding {
@@ -128,6 +130,7 @@ fn parse_key_value(input: &[u8]) -> IResult<&[u8], RdbKeyValue> {
 }
 
 fn parse_database(input: &[u8]) -> IResult<&[u8], RdbDatabase> {
+    let mut entries = HashMap::new();
     let (input, _) = be_u8(input)?;
     let (input, id) = parse_length_only(input)?;
 
@@ -138,7 +141,6 @@ fn parse_database(input: &[u8]) -> IResult<&[u8], RdbDatabase> {
         input
     };
 
-    let mut entries = Vec::new();
     let mut input = input;
 
     loop {
@@ -146,7 +148,17 @@ fn parse_database(input: &[u8]) -> IResult<&[u8], RdbDatabase> {
             Some(&0xFE) | Some(&0xFF) | None => break,
             _ => {
                 let (i, kv) = parse_key_value(input)?;
-                entries.push(kv);
+                let expiry = if let Some(expiry) = kv.expiry {
+                    match expiry {
+                        RdbExpiry::Seconds(s) => Some(Duration::from_millis((s as u64) * 1000)),
+                        RdbExpiry::Milliseconds(ms) => Some(Duration::from_millis(ms)),
+                    }
+                } else {
+                    None
+                };
+
+                let RdbValue::String(value) = kv.value;
+                entries.insert(kv.key, RdbDatabaseEntry { expiry, value });
                 input = i;
             }
         }
@@ -177,7 +189,7 @@ pub fn parse_rdb(input: &[u8]) -> IResult<&[u8], RdbInner> {
     let (i, version) = parse_version(input)?;
     input = i;
 
-    let mut aux = Vec::new();
+    let mut aux = HashMap::new();
     let mut databases = Vec::new();
 
     loop {
@@ -186,7 +198,7 @@ pub fn parse_rdb(input: &[u8]) -> IResult<&[u8], RdbInner> {
         match opcode {
             0xFA => {
                 let (i, pair) = parse_aux(input)?;
-                aux.push(pair);
+                aux.insert(pair.0, pair.1);
                 input = i;
             }
             0xFE => {

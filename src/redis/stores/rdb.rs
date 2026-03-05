@@ -1,4 +1,7 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::redis::{
     protocol::RedisError,
@@ -52,14 +55,33 @@ impl RdbFile {
         self.raw.clone()
     }
 
-    pub fn get(&self, key: &Bytes) {
+    pub fn list(&self) -> Vec<&Bytes> {
+        self.inner
+            .databases
+            .iter()
+            .map(|db| db.entries.keys().collect::<Vec<&Bytes>>())
+            .flatten()
+            .collect::<Vec<&Bytes>>()
+    }
+
+    pub fn get(&self, key: &Bytes) -> Option<Bytes> {
         for db in self.inner.databases.iter() {
-            for entry in db.entries.iter() {
-                let e_key = &entry.key;
-                if e_key == key {
-                    todo!()
+            match db.entries.get(key) {
+                Some(entry) => {
+                    if let Some(ex) = entry.expiry {
+                        let start = SystemTime::now();
+                        let now = start.duration_since(UNIX_EPOCH).expect("time goes forward");
+                        if now.as_millis() > ex.as_millis() {
+                            return None;
+                        }
+                    }
+
+                    return Some(entry.value.clone());
                 }
+                None => return None,
             }
         }
+
+        None
     }
 }
