@@ -32,6 +32,9 @@ pub enum CommandType {
     Wait,
     Config,
     Keys,
+    Subscribe,
+    Unsubscribe,
+    Publish,
 }
 
 impl CommandType {
@@ -62,6 +65,9 @@ impl CommandType {
             "wait" => Ok(Self::Wait),
             "config" => Ok(Self::Config),
             "keys" => Ok(Self::Keys),
+            "subscribe" => Ok(Self::Subscribe),
+            "unsubscribe" => Ok(Self::Unsubscribe),
+            "publish" => Ok(Self::Publish),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -95,6 +101,9 @@ impl std::fmt::Display for CommandType {
             Self::Wait => write!(f, "wait"),
             Self::Config => write!(f, "config"),
             Self::Keys => write!(f, "keys"),
+            Self::Subscribe => write!(f, "subscribe"),
+            Self::Unsubscribe => write!(f, "unsubscribe"),
+            Self::Publish => write!(f, "publish"),
         }
     }
 }

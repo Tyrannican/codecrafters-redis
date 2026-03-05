@@ -52,7 +52,7 @@ impl PubSubStore {
     pub fn subscribe(
         &mut self,
         channel_name: Bytes,
-        client_id: Bytes,
+        client_id: &Bytes,
         responder: SubscriberChannel,
     ) -> usize {
         self.topics
@@ -72,11 +72,27 @@ impl PubSubStore {
 
         let channel_count = self
             .subscribers
-            .entry(client_id)
+            .entry(client_id.clone())
             .and_modify(|e| *e += 1)
             .or_insert(1);
 
         *channel_count
+    }
+
+    pub fn unsubscribe(&mut self, client_id: &Bytes, channel_name: &Bytes) -> usize {
+        if let Some(topic) = self.topics.get_mut(channel_name) {
+            if topic.subscribers.contains_key(client_id) {
+                topic.subscribers.remove(client_id);
+                self.subscribers
+                    .entry(client_id.clone())
+                    .and_modify(|c| *c -= 1);
+            }
+        }
+
+        match self.subscribers.get(client_id) {
+            Some(count) => *count,
+            None => 0,
+        }
     }
 
     pub fn get_topic(&self, channel_name: &Bytes) -> Option<&Topic> {

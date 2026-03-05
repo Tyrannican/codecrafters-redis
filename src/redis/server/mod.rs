@@ -184,12 +184,12 @@ impl Worker {
         responder: AsyncSender<Vec<Value>>,
     ) -> Result<Vec<Value>, RedisError> {
         let request = RedisCommand::new(&request)?;
-        self.add_replica(request.cmd, client_id.clone(), responder)
+        self.add_replica(request.cmd, client_id.clone(), responder.clone())
             .await;
         self.replicate(&request).await?;
         let response = match self.check_transaction(&request, &client_id)? {
             Some(response) => response,
-            None => self.execute_command(&request, client_id).await?,
+            None => self.execute_command(&request, client_id, responder).await?,
         };
 
         Ok(response)
@@ -251,10 +251,15 @@ impl Worker {
         Ok(None)
     }
 
+    async fn subscriber_mode(&mut self, request: &RedisCommand) -> Result<Vec<Value>, RedisError> {
+        todo!()
+    }
+
     async fn execute_command(
         &mut self,
         request: &RedisCommand,
         client_id: Bytes,
+        responder: AsyncSender<Vec<Value>>,
     ) -> Result<Vec<Value>, RedisError> {
         let mut response = Vec::new();
         match request.cmd {
@@ -605,7 +610,10 @@ impl Worker {
 
                 let mut results = Vec::new();
                 for cmd in txn.commands() {
-                    results.push(Box::pin(self.execute_command(&cmd, client_id.clone())).await?);
+                    results.push(
+                        Box::pin(self.execute_command(&cmd, client_id.clone(), responder.clone()))
+                            .await?,
+                    );
                 }
 
                 response = results.into_iter().flatten().collect();
@@ -737,6 +745,12 @@ impl Worker {
                     response.push(Value::Array(combined));
                 }
             }
+
+            CommandType::Publish => {}
+
+            CommandType::Subscribe => {}
+
+            CommandType::Unsubscribe => {}
         }
 
         Ok(response)
