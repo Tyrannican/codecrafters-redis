@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::redis::RedisError;
 use bytes::Bytes;
 

@@ -271,9 +271,17 @@ impl Worker {
                 let key = &request.args[0];
                 let store = self.store.map_reader()?;
 
+                // TODO: Combine Memstore with RDB
                 match store.get(key) {
                     Some(value) => response.push(Value::String(value.clone())),
-                    None => response.push(Value::NullString),
+                    None => {
+                        let rdb = self.store.rdb_reader()?;
+                        match rdb.get(key) {
+                            Some(value) => response.push(Value::String(value)),
+                            None => response.push(Value::NullString),
+                        }
+                        // response.push(Value::NullString)
+                    }
                 }
             }
             CommandType::Set => {
@@ -710,6 +718,24 @@ impl Worker {
                 }
 
                 response.push(Value::Array(values));
+            }
+            CommandType::Keys => {
+                validate_args_len(&request, 1)?;
+                let key = &request.args[0];
+                if **key == *b"*" {
+                    let map = self.store.map_reader()?;
+                    let mem_keys = map.list();
+                    let rdb = self.store.rdb_reader()?;
+                    let rdb_keys = rdb.list();
+
+                    let combined = vec![mem_keys, rdb_keys]
+                        .into_iter()
+                        .flatten()
+                        .map(|k| Value::String(k.clone()))
+                        .collect::<Vec<Value>>();
+
+                    response.push(Value::Array(combined));
+                }
             }
         }
 

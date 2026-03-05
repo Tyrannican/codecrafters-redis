@@ -46,8 +46,6 @@ impl RdbFile {
         (_, self.inner) =
             parse_rdb(&self.raw[..]).map_err(|e| RedisError::RdbParse(e.to_string()))?;
 
-        eprintln!("{:?}", self.inner);
-
         Ok(())
     }
 

@@ -55,6 +55,10 @@ impl MapStore {
         Some(&value.value)
     }
 
+    pub fn list(&self) -> Vec<&Bytes> {
+        self.map.keys().collect()
+    }
+
     pub fn set(
         &mut self,
         key: &Bytes,
