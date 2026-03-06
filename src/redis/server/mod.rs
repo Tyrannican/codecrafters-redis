@@ -295,6 +295,19 @@ impl Worker {
 
                 response.push(Value::Array(msg));
             }
+            CommandType::Unsubscribe => {
+                validate_args_len(request, 1)?;
+                let channel_name = &request.args[0];
+                let mut ps_writer = self.store.pubsub_writer()?;
+                let subs = ps_writer.unsubscribe(channel_name, &client_id);
+                let msg = vec![
+                    Value::String("unsubscribe".into()),
+                    Value::String(channel_name.clone()),
+                    Value::Integer(subs as i64),
+                ];
+
+                response.push(Value::Array(msg));
+            }
             invalid => {
                 let err_msg = format!("ERR Can't execute '{invalid}' in subscribed mode");
                 response.push(Value::Error(err_msg.into()));
