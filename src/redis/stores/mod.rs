@@ -4,6 +4,7 @@ mod notifier;
 mod pubsub;
 mod queue;
 mod rdb;
+mod sorted_set;
 mod stream;
 
 use bytes::Bytes;
