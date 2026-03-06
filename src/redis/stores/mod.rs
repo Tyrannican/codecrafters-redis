@@ -10,6 +10,7 @@ use bytes::Bytes;
 use list::ListStore;
 use map::MapStore;
 use notifier::Notifier;
+use pubsub::PubSubStore;
 use queue::TransactionStore;
 use rdb::RdbFile;
 use stream::StreamStore;
@@ -32,6 +33,7 @@ pub struct GlobalStore {
     txns: RwLock<TransactionStore>,
     rdb: RwLock<RdbFile>,
     config: RwLock<MapStore>,
+    pubsub: RwLock<PubSubStore>,
 }
 
 impl GlobalStore {
@@ -45,6 +47,7 @@ impl GlobalStore {
             txns: RwLock::new(TransactionStore::new()),
             rdb: RwLock::new(RdbFile::new()),
             config: RwLock::new(MapStore::new()),
+            pubsub: RwLock::new(PubSubStore::new()),
         }
     }
 
@@ -133,6 +136,14 @@ impl GlobalStore {
 
     pub fn config_writer(&self) -> Result<RwLockWriteGuard<'_, MapStore>, RedisError> {
         self.config.write().map_err(|_| RedisError::WriteLock)
+    }
+
+    pub fn pubsub_reader(&self) -> Result<RwLockReadGuard<'_, PubSubStore>, RedisError> {
+        self.pubsub.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn pubsub_writer(&self) -> Result<RwLockWriteGuard<'_, PubSubStore>, RedisError> {
+        self.pubsub.write().map_err(|_| RedisError::WriteLock)
     }
 
     pub fn key_type(&self, key: &Bytes) -> Result<Bytes, RedisError> {

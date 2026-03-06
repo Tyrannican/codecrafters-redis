@@ -14,7 +14,7 @@ pub struct Topic {
 }
 
 impl Topic {
-    pub async fn publish_message(&self, msg: Bytes) -> Result<(), RedisError> {
+    pub async fn publish_message(&self, msg: Bytes) -> Result<usize, RedisError> {
         for sub in self.subscribers.values() {
             let msg = Value::Array(vec![
                 Value::String("message".into()),
@@ -27,7 +27,7 @@ impl Topic {
                 .map_err(|_| RedisError::ChannelSendError)?
         }
 
-        Ok(())
+        Ok(self.subscribers.len())
     }
 }
 
@@ -79,7 +79,7 @@ impl PubSubStore {
         *channel_count
     }
 
-    pub fn unsubscribe(&mut self, client_id: &Bytes, channel_name: &Bytes) -> usize {
+    pub fn unsubscribe(&mut self, channel_name: &Bytes, client_id: &Bytes) -> usize {
         if let Some(topic) = self.topics.get_mut(channel_name) {
             if topic.subscribers.contains_key(client_id) {
                 topic.subscribers.remove(client_id);
@@ -90,7 +90,14 @@ impl PubSubStore {
         }
 
         match self.subscribers.get(client_id) {
-            Some(count) => *count,
+            Some(count) => {
+                if *count == 0 {
+                    self.subscribers.remove(client_id);
+                    return 0;
+                }
+
+                *count
+            }
             None => 0,
         }
     }

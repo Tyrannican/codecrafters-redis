@@ -184,13 +184,11 @@ impl Worker {
         responder: AsyncSender<Vec<Value>>,
     ) -> Result<Vec<Value>, RedisError> {
         let request = RedisCommand::new(&request)?;
+
         self.add_replica(request.cmd, client_id.clone(), responder.clone())
             .await;
         self.replicate(&request).await?;
-        let response = match self.check_transaction(&request, &client_id)? {
-            Some(response) => response,
-            None => self.execute_command(&request, client_id, responder).await?,
-        };
+        let response = self.execute_command(&request, client_id, responder).await?;
 
         Ok(response)
     }
@@ -251,8 +249,59 @@ impl Worker {
         Ok(None)
     }
 
-    async fn subscriber_mode(&mut self, request: &RedisCommand) -> Result<Vec<Value>, RedisError> {
-        todo!()
+    async fn check_subscriber_mode(
+        &mut self,
+        request: &RedisCommand,
+        client_id: &Bytes,
+        responder: AsyncSender<Vec<Value>>,
+    ) -> Result<Option<Vec<Value>>, RedisError> {
+        let subbed = {
+            let ps_reader = self.store.pubsub_reader()?;
+            ps_reader.is_subscribed(&client_id)
+        };
+
+        if subbed {
+            let response = self
+                .subscriber_mode(request, client_id.clone(), responder)
+                .await?;
+            Ok(Some(response))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn subscriber_mode(
+        &mut self,
+        request: &RedisCommand,
+        client_id: Bytes,
+        responder: AsyncSender<Vec<Value>>,
+    ) -> Result<Vec<Value>, RedisError> {
+        let mut response = Vec::new();
+        match request.cmd {
+            CommandType::Ping => {
+                let resp = vec![Value::String("pong".into()), Value::String("".into())];
+                response.push(Value::Array(resp));
+            }
+            CommandType::Subscribe => {
+                validate_args_len(request, 1)?;
+                let channel_name = &request.args[0];
+                let mut ps_writer = self.store.pubsub_writer()?;
+                let subs = ps_writer.subscribe(channel_name.clone(), &client_id, responder);
+                let msg = vec![
+                    Value::String("subscribe".into()),
+                    Value::String(channel_name.clone()),
+                    Value::Integer(subs as i64),
+                ];
+
+                response.push(Value::Array(msg));
+            }
+            invalid => {
+                let err_msg = format!("ERR Can't execute '{invalid}' in subscribed mode");
+                response.push(Value::Error(err_msg.into()));
+            }
+        }
+
+        Ok(response)
     }
 
     async fn execute_command(
@@ -261,7 +310,19 @@ impl Worker {
         client_id: Bytes,
         responder: AsyncSender<Vec<Value>>,
     ) -> Result<Vec<Value>, RedisError> {
+        if let Some(resp) = self.check_transaction(request, &client_id)? {
+            return Ok(resp);
+        }
+
+        if let Some(resp) = self
+            .check_subscriber_mode(request, &client_id, responder.clone())
+            .await?
+        {
+            return Ok(resp);
+        }
+
         let mut response = Vec::new();
+
         match request.cmd {
             CommandType::Ping => response.push(Value::SimpleString("PONG".into())),
             CommandType::Echo => {
@@ -746,11 +807,52 @@ impl Worker {
                 }
             }
 
-            CommandType::Publish => {}
+            CommandType::Publish => {
+                validate_args_len(request, 2)?;
+                let channel_name = &request.args[0];
+                let content = &request.args[1];
 
-            CommandType::Subscribe => {}
+                let topic = {
+                    let ps_reader = self.store.pubsub_reader()?;
+                    match ps_reader.get_topic(channel_name) {
+                        Some(t) => Some(t.clone()),
+                        None => None,
+                    }
+                };
 
-            CommandType::Unsubscribe => {}
+                if let Some(topic) = topic {
+                    let subs = topic.publish_message(content.clone()).await?;
+                    response.push(Value::Integer(subs as i64));
+                }
+            }
+
+            CommandType::Subscribe => {
+                validate_args_len(request, 1)?;
+                let channel_name = &request.args[0];
+                let mut ps_writer = self.store.pubsub_writer()?;
+                let subs = ps_writer.subscribe(channel_name.clone(), &client_id, responder);
+                let msg = vec![
+                    Value::String("subscribe".into()),
+                    Value::String(channel_name.clone()),
+                    Value::Integer(subs as i64),
+                ];
+
+                response.push(Value::Array(msg));
+            }
+
+            CommandType::Unsubscribe => {
+                validate_args_len(request, 1)?;
+                let channel_name = &request.args[0];
+                let mut ps_writer = self.store.pubsub_writer()?;
+                let subs = ps_writer.unsubscribe(channel_name, &client_id);
+                let msg = vec![
+                    Value::String("unsubscribe".into()),
+                    Value::String(channel_name.clone()),
+                    Value::Integer(subs as i64),
+                ];
+
+                response.push(Value::Array(msg));
+            }
         }
 
         Ok(response)
