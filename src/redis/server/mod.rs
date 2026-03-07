@@ -866,6 +866,79 @@ impl Worker {
 
                 response.push(Value::Array(msg));
             }
+
+            CommandType::ZAdd => {
+                validate_args_len(request, 3)?;
+                let set_name = &request.args[0];
+                let score = bytes_to_number::<f64>(&request.args[1])?;
+                let name = &request.args[2];
+
+                let mut set_writer = self.store.sorted_set_writer()?;
+                let added = set_writer.zadd(set_name, name, score);
+                response.push(Value::Integer(added as i64));
+            }
+
+            CommandType::ZRank => {
+                validate_args_len(request, 2)?;
+                let set_name = &request.args[0];
+                let name = &request.args[1];
+
+                let set_reader = self.store.sorted_set_reader()?;
+                match set_reader.zrank(set_name, name) {
+                    Some(total) => response.push(Value::Integer(total as i64)),
+                    None => response.push(Value::NullString),
+                }
+            }
+
+            CommandType::ZRange => {
+                validate_args_len(request, 3)?;
+                let set_name = &request.args[0];
+                let start = bytes_to_number::<i32>(&request.args[1])?;
+                let end = bytes_to_number::<i32>(&request.args[2])?;
+
+                let set_reader = self.store.sorted_set_reader()?;
+                let members = set_reader.zrange(set_name, start, end);
+                if members.is_empty() {
+                    response.push(Value::EmptyArray);
+                } else {
+                    let members: Vec<Value> = members
+                        .into_iter()
+                        .map(|member| Value::String(member))
+                        .collect();
+                    response.push(Value::Array(members));
+                }
+            }
+
+            CommandType::ZCard => {
+                validate_args_len(request, 1)?;
+                let set_name = &request.args[0];
+                let set_reader = self.store.sorted_set_reader()?;
+                let size = set_reader.zcard(set_name);
+                response.push(Value::Integer(size as i64));
+            }
+
+            CommandType::ZScore => {
+                validate_args_len(request, 2)?;
+                let set_name = &request.args[0];
+                let name = &request.args[1];
+                let set_reader = self.store.sorted_set_reader()?;
+
+                match set_reader.zscore(set_name, name) {
+                    Some(score) => response.push(Value::String(format!("{score}").into())),
+                    None => response.push(Value::NullString),
+                }
+            }
+
+            CommandType::ZRem => {
+                validate_args_len(request, 2)?;
+                let set_name = &request.args[0];
+                let name = &request.args[1];
+                let mut set_reader = self.store.sorted_set_writer()?;
+                let removed = set_reader.zrem(set_name, name);
+                response.push(Value::Integer(removed as i64));
+            }
+
+            _ => todo!(),
         }
 
         Ok(response)

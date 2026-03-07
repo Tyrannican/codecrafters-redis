@@ -35,6 +35,12 @@ pub enum CommandType {
     Subscribe,
     Unsubscribe,
     Publish,
+    ZAdd,
+    ZRank,
+    ZRange,
+    ZCard,
+    ZScore,
+    ZRem,
 }
 
 impl CommandType {
@@ -68,6 +74,12 @@ impl CommandType {
             "subscribe" => Ok(Self::Subscribe),
             "unsubscribe" => Ok(Self::Unsubscribe),
             "publish" => Ok(Self::Publish),
+            "zadd" => Ok(Self::ZAdd),
+            "zrank" => Ok(Self::ZRank),
+            "zrange" => Ok(Self::ZRange),
+            "zcard" => Ok(Self::ZCard),
+            "zscore" => Ok(Self::ZScore),
+            "zrem" => Ok(Self::ZRem),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -104,6 +116,12 @@ impl std::fmt::Display for CommandType {
             Self::Subscribe => write!(f, "subscribe"),
             Self::Unsubscribe => write!(f, "unsubscribe"),
             Self::Publish => write!(f, "publish"),
+            Self::ZAdd => write!(f, "zadd"),
+            Self::ZRank => write!(f, "zrank"),
+            Self::ZRange => write!(f, "zrange"),
+            Self::ZCard => write!(f, "zcard"),
+            Self::ZScore => write!(f, "zscore"),
+            Self::ZRem => write!(f, "zrem"),
         }
     }
 }
