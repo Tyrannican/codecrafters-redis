@@ -41,6 +41,9 @@ pub enum CommandType {
     ZCard,
     ZScore,
     ZRem,
+    GeoAdd,
+    GeoPos,
+    GeoDist,
 }
 
 impl CommandType {
@@ -80,6 +83,9 @@ impl CommandType {
             "zcard" => Ok(Self::ZCard),
             "zscore" => Ok(Self::ZScore),
             "zrem" => Ok(Self::ZRem),
+            "geoadd" => Ok(Self::GeoAdd),
+            "geopos" => Ok(Self::GeoPos),
+            "geodist" => Ok(Self::GeoDist),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -122,6 +128,9 @@ impl std::fmt::Display for CommandType {
             Self::ZCard => write!(f, "zcard"),
             Self::ZScore => write!(f, "zscore"),
             Self::ZRem => write!(f, "zrem"),
+            Self::GeoAdd => write!(f, "geoadd"),
+            Self::GeoPos => write!(f, "geopos"),
+            Self::GeoDist => write!(f, "geodist"),
         }
     }
 }

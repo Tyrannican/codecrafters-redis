@@ -7,6 +7,7 @@ const MAX_LONGITUDE: f64 = 180.0;
 
 const LATITUDE_RANGE: f64 = MAX_LATITUDE - MIN_LATITUDE;
 const LONGITUDE_RANGE: f64 = MAX_LONGITUDE - MIN_LONGITUDE;
+const EARTH_RADIUS: f64 = 6372797.560856;
 
 pub fn validate_latlon(lat: f64, lon: f64) -> bool {
     (lat >= MIN_LATITUDE && lat <= MAX_LATITUDE) && (lon >= MIN_LONGITUDE && lon <= MAX_LONGITUDE)
@@ -27,6 +28,22 @@ pub fn decode_latlon(score: u64) -> (f64, f64) {
     let grid_lon = compact_int64_to_int32(y);
 
     convert_grid_numbers_to_coordinates(grid_lat, grid_lon)
+}
+
+/* Taken from: https://rosettacode.org/wiki/Haversine_formula#Rust */
+pub fn latlon_dist(pt1: (f64, f64), pt2: (f64, f64)) -> f64 {
+    let (lat1, lon1) = pt1;
+    let (lat2, lon2) = pt2;
+
+    let lat1 = lat1.to_radians();
+    let lat2 = lat2.to_radians();
+    let d_lat = lat2 - lat1;
+    let d_lon = (lon2 - lon1).to_radians();
+
+    let a = (d_lat / 2.0).sin().powi(2) + (d_lon / 2.0).sin().powi(2) * lat1.cos() * lat2.cos();
+    let c = 2.0 * a.sqrt().asin();
+
+    EARTH_RADIUS * c
 }
 
 /* Encoding */

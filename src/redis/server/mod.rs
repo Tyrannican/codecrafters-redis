@@ -10,7 +10,11 @@ use tokio::task::JoinHandle;
 
 use super::protocol::{CommandType, RedisCommand, RedisError, Value};
 use super::stores::GlobalStore;
-use super::utils::{bytes_to_number, validate_args_len};
+use super::utils::{
+    bytes_to_number,
+    geo::{decode_latlon, encode_latlon, latlon_dist, validate_latlon},
+    validate_args_len,
+};
 
 mod replica;
 use replica::ReplicaMasterConnection;
@@ -936,6 +940,67 @@ impl Worker {
                 let mut set_reader = self.store.sorted_set_writer()?;
                 let removed = set_reader.zrem(set_name, name);
                 response.push(Value::Integer(removed as i64));
+            }
+
+            CommandType::GeoAdd => {
+                validate_args_len(request, 4)?;
+                let key = &request.args[0];
+                let lon = bytes_to_number::<f64>(&request.args[1])?;
+                let lat = bytes_to_number::<f64>(&request.args[2])?;
+                let place = &request.args[3];
+
+                if !validate_latlon(lat, lon) {
+                    response.push(Value::Error(
+                        format!("ERR invalid longitude,latitude pair {},{}", lon, lat).into(),
+                    ));
+                    return Ok(response);
+                }
+
+                let score = encode_latlon(lat, lon);
+                let mut set_writer = self.store.sorted_set_writer()?;
+                let added = set_writer.zadd(key, place, score as f64);
+                response.push(Value::Integer(added as i64));
+            }
+
+            CommandType::GeoPos => {
+                validate_args_len(request, 2)?;
+                let key = &request.args[0];
+                let name = &request.args[0];
+
+                let set_reader = self.store.sorted_set_reader()?;
+                match set_reader.zscore(key, name) {
+                    Some(score) => {
+                        let (lat, lon) = decode_latlon(score as u64);
+                        let resp = vec![
+                            Value::String(lon.to_string().into()),
+                            Value::String(lat.to_string().into()),
+                        ];
+                        response.push(Value::Array(resp));
+                    }
+                    None => response.push(Value::NullArray),
+                }
+            }
+
+            CommandType::GeoDist => {
+                validate_args_len(request, 3)?;
+                let key = &request.args[0];
+                let origin = &request.args[1];
+                let dest = &request.args[2];
+
+                let set_reader = self.store.sorted_set_reader()?;
+                let Some(origin_score) = set_reader.zscore(key, origin) else {
+                    todo!();
+                };
+
+                let Some(dest_score) = set_reader.zscore(key, dest) else {
+                    todo!();
+                };
+
+                let origin = decode_latlon(origin_score as u64);
+                let dest = decode_latlon(dest_score as u64);
+                let dist = latlon_dist(origin, dest);
+
+                response.push(Value::String(dist.to_string().into()));
             }
         }
 
