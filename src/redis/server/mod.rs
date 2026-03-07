@@ -965,20 +965,26 @@ impl Worker {
             CommandType::GeoPos => {
                 validate_args_len(request, 2)?;
                 let key = &request.args[0];
-                let name = &request.args[0];
+                let places = &request.args[1..];
 
                 let set_reader = self.store.sorted_set_reader()?;
-                match set_reader.zscore(key, name) {
-                    Some(score) => {
-                        let (lat, lon) = decode_latlon(score as u64);
-                        let resp = vec![
-                            Value::String(lon.to_string().into()),
-                            Value::String(lat.to_string().into()),
-                        ];
-                        response.push(Value::Array(resp));
+                let mut values = Vec::new();
+
+                for place in places {
+                    match set_reader.zscore(key, place) {
+                        Some(score) => {
+                            let (lat, lon) = decode_latlon(score as u64);
+                            let resp = vec![
+                                Value::String(lon.to_string().into()),
+                                Value::String(lat.to_string().into()),
+                            ];
+                            values.push(Value::Array(resp));
+                        }
+                        None => values.push(Value::NullArray),
                     }
-                    None => response.push(Value::NullArray),
                 }
+
+                response.push(Value::Array(values));
             }
 
             CommandType::GeoDist => {
