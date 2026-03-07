@@ -3,6 +3,8 @@ use std::str::FromStr;
 use crate::redis::{RedisCommand, RedisError};
 use bytes::Bytes;
 
+pub mod geo;
+
 pub fn bytes_to_str(b: &Bytes) -> Result<&str, RedisError> {
     str::from_utf8(&b[..]).map_err(|_| RedisError::StringConversion)
 }
