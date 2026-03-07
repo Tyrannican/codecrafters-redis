@@ -75,6 +75,16 @@ impl SortedSet {
 
     pub fn add(&mut self, name: &Bytes, score: f64) -> usize {
         if self.map.contains_key(name) {
+            let old_score = self
+                .map
+                .remove(name)
+                .expect("exists because of previous check");
+
+            let target = (OrderedFloat(old_score), name.clone());
+            self.set.remove(&target);
+
+            self.map.insert(name.clone(), score);
+            self.set.insert((OrderedFloat(score), name.clone()));
             0
         } else {
             self.map.insert(name.clone(), score);
