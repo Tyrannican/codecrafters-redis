@@ -109,7 +109,7 @@ impl SortedSet {
                     return None;
                 }
 
-                let count = self.set.range(..=target).count();
+                let count = self.set.range(..target).count();
                 Some(count)
             }
             None => None,

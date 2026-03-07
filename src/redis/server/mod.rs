@@ -937,8 +937,6 @@ impl Worker {
                 let removed = set_reader.zrem(set_name, name);
                 response.push(Value::Integer(removed as i64));
             }
-
-            _ => todo!(),
         }
 
         Ok(response)
