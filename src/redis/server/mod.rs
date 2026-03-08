@@ -790,7 +790,7 @@ impl Worker {
                 let rest = &request.args[1..];
 
                 let mut values = vec![];
-                if **cmd == *b"GET" {
+                if &cmd[..] == b"GET" {
                     let cfg = self.store.config_reader()?;
                     for key in rest.iter() {
                         match cfg.get(key) {
@@ -808,7 +808,7 @@ impl Worker {
             CommandType::Keys => {
                 validate_args_len(&request, 1)?;
                 let key = &request.args[0];
-                if **key == *b"*" {
+                if &key[..] == b"*" {
                     let map = self.store.map_reader()?;
                     let mem_keys = map.list();
                     let rdb = self.store.rdb_reader()?;
@@ -1007,6 +1007,40 @@ impl Worker {
                 let dist = latlon_dist(origin, dest);
 
                 response.push(Value::String(dist.to_string().into()));
+            }
+
+            CommandType::GeoSearch => {
+                validate_args_len(request, 7)?;
+                let key = &request.args[0];
+                let mode = &request.args[1];
+                let src_lon = bytes_to_number::<f64>(&request.args[2])?;
+                let src_lat = bytes_to_number::<f64>(&request.args[3])?;
+                let search_option = &request.args[4];
+                let dist_value = bytes_to_number::<f64>(&request.args[5])?;
+                let unit = &request.args[6];
+                assert_eq!(&mode[..], b"FROMLONLAT");
+                assert_eq!(&search_option[..], b"BYRADIUS");
+                assert_eq!(&unit[..], b"m");
+
+                let set_reader = self.store.sorted_set_reader()?;
+                let entries = set_reader.zrange(key, 0, -1);
+                let valid_entries = entries
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let score = set_reader
+                            .zscore(key, &entry)
+                            .expect("already present in set");
+                        let dest = decode_latlon(score as u64);
+                        let dist = latlon_dist((src_lat, src_lon), dest);
+                        if dist < dist_value {
+                            Some(Value::String(entry.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<Value>>();
+
+                response.push(Value::Array(valid_entries));
             }
         }
 
