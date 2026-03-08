@@ -6,6 +6,7 @@ mod queue;
 mod rdb;
 mod sorted_set;
 mod stream;
+mod user;
 
 use bytes::Bytes;
 use list::ListStore;
