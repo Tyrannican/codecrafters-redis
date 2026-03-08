@@ -45,6 +45,8 @@ pub enum CommandType {
     GeoPos,
     GeoDist,
     GeoSearch,
+    Acl,
+    Auth,
 }
 
 impl CommandType {
@@ -88,6 +90,8 @@ impl CommandType {
             "geopos" => Ok(Self::GeoPos),
             "geodist" => Ok(Self::GeoDist),
             "geosearch" => Ok(Self::GeoSearch),
+            "acl" => Ok(Self::Acl),
+            "auth" => Ok(Self::Auth),
             cmd => Err(RedisError::UnsupportedCommand(cmd.to_string())),
         }
     }
@@ -134,6 +138,8 @@ impl std::fmt::Display for CommandType {
             Self::GeoPos => write!(f, "geopos"),
             Self::GeoDist => write!(f, "geodist"),
             Self::GeoSearch => write!(f, "geosearch"),
+            Self::Acl => write!(f, "acl"),
+            Self::Auth => write!(f, "auth"),
         }
     }
 }

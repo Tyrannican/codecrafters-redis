@@ -1042,6 +1042,10 @@ impl Worker {
 
                 response.push(Value::Array(valid_entries));
             }
+
+            CommandType::Acl => {}
+
+            CommandType::Auth => {}
         }
 
         Ok(response)
