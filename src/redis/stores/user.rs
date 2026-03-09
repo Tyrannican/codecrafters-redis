@@ -33,22 +33,22 @@ impl UserStore {
         }
     }
 
-    pub fn set_password(&mut self, user: &Bytes, pass: &Bytes) {
+    pub fn set_password(&mut self, user: &Bytes, pass: &Bytes, client_id: &Bytes) {
         if let Some(user) = self.users.get_mut(user) {
-            user.add_password(pass);
+            user.set_password(pass, client_id);
         }
     }
 
-    pub fn authenticate(&self, user: &Bytes, pass: &Bytes) -> bool {
-        match self.users.get(user) {
-            Some(user) => user.authenticate(pass),
+    pub fn authenticate(&mut self, user: &Bytes, pass: &Bytes, client_id: &Bytes) -> bool {
+        match self.users.get_mut(user) {
+            Some(user) => user.authenticate(pass, client_id),
             None => false,
         }
     }
 
-    pub fn requires_authentication(&self, user: &Bytes) -> bool {
+    pub fn requires_authentication(&self, user: &Bytes, client_id: &Bytes) -> bool {
         match self.users.get(user) {
-            Some(user) => user.requires_authentication(),
+            Some(user) => user.requires_authentication(client_id),
             None => true,
         }
     }
@@ -56,25 +56,31 @@ impl UserStore {
 
 #[derive(Debug, Clone)]
 pub struct RedisUser {
-    username: Bytes,
     flags: HashSet<UserFlag>,
     passwords: HashSet<Bytes>,
+    authed_clients: HashSet<Bytes>,
 }
 
 impl RedisUser {
-    pub fn add_password(&mut self, pass: &Bytes) {
+    pub fn set_password(&mut self, pass: &Bytes, client_id: &Bytes) {
         let pass = hasher(pass);
         self.passwords.insert(pass);
+        self.authed_clients.insert(client_id.clone());
         self.flags.remove(&UserFlag::NoPass);
     }
 
-    pub fn requires_authentication(&self) -> bool {
-        !self.flags.contains(&UserFlag::NoPass)
+    pub fn requires_authentication(&self, client_id: &Bytes) -> bool {
+        !self.flags.contains(&UserFlag::NoPass) && !self.authed_clients.contains(client_id)
     }
 
-    pub fn authenticate(&self, pass: &Bytes) -> bool {
+    pub fn authenticate(&mut self, pass: &Bytes, client_id: &Bytes) -> bool {
         let pass = hasher(pass);
-        self.passwords.contains(&pass)
+        if self.passwords.contains(&pass) {
+            self.authed_clients.insert(client_id.clone());
+            return true;
+        }
+
+        false
     }
 
     pub fn repr(&self) -> Value {
@@ -103,9 +109,9 @@ impl RedisUser {
 impl Default for RedisUser {
     fn default() -> Self {
         Self {
-            username: Bytes::from_static(&b"default"[..]),
             flags: HashSet::from_iter([UserFlag::NoPass].into_iter()),
             passwords: HashSet::new(),
+            authed_clients: HashSet::new(),
         }
     }
 }

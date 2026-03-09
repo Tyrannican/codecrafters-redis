@@ -321,12 +321,51 @@ impl Worker {
         Ok(response)
     }
 
+    fn authenticate(
+        &self,
+        request: &RedisCommand,
+        client_id: &Bytes,
+    ) -> Result<Option<Vec<Value>>, RedisError> {
+        let user_reader = self.store.user_reader()?;
+        if user_reader.requires_authentication(&"default".into(), client_id) {
+            let mut response = Vec::new();
+            match request.cmd {
+                CommandType::Auth => {
+                    validate_args_len(request, 2)?;
+                    let username = &request.args[0];
+                    let password = &request.args[1];
+
+                    let mut user_writer = self.store.user_writer()?;
+                    if !user_writer.authenticate(username, password, client_id) {
+                        response.push(Value::Error(
+                            "WRONGPASS invalid username-password pair or user is disabled".into(),
+                        ));
+                    } else {
+                        response.push(Value::ok());
+                    }
+
+                    return Ok(Some(response));
+                }
+                _ => {
+                    response.push(Value::Error("NOAUTH Authentication required.".into()));
+                    return Ok(Some(response));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     async fn execute_command(
         &mut self,
         request: &RedisCommand,
         client_id: Bytes,
         responder: AsyncSender<Vec<Value>>,
     ) -> Result<Vec<Value>, RedisError> {
+        if let Some(resp) = self.authenticate(request, &client_id)? {
+            return Ok(resp);
+        }
+
         if let Some(resp) = self.check_transaction(request, &client_id)? {
             return Ok(resp);
         }
@@ -1068,7 +1107,7 @@ impl Worker {
                         let pass = Bytes::copy_from_slice(&pass[1..]);
 
                         let mut user_writer = self.store.user_writer()?;
-                        user_writer.set_password(username, &pass);
+                        user_writer.set_password(username, &pass, &client_id);
                         response.push(Value::ok());
                     }
                     _ => {}
@@ -1080,8 +1119,8 @@ impl Worker {
                 let username = &request.args[0];
                 let password = &request.args[1];
 
-                let user_reader = self.store.user_reader()?;
-                if !user_reader.authenticate(username, password) {
+                let mut user_writer = self.store.user_writer()?;
+                if !user_writer.authenticate(username, password, &client_id) {
                     response.push(Value::Error(
                         "WRONGPASS invalid username-password pair or user is disabled".into(),
                     ));
