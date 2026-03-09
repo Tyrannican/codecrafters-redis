@@ -1,3 +1,5 @@
+use crate::redis::protocol::Value;
+
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use std::{
@@ -24,9 +26,9 @@ impl UserStore {
         Self { users }
     }
 
-    pub fn get(&self, user: &Bytes) -> Option<RedisUser> {
+    pub fn get(&self, user: &Bytes) -> Option<Value> {
         match self.users.get(user) {
-            Some(user) => Some(user.clone()),
+            Some(user) => Some(user.repr()),
             None => None,
         }
     }
@@ -74,6 +76,28 @@ impl RedisUser {
         let pass = hasher(pass);
         self.passwords.contains(&pass)
     }
+
+    pub fn repr(&self) -> Value {
+        let mut values: Vec<Value> = vec![Value::String("flags".into())];
+        let flags = self
+            .flags
+            .iter()
+            .map(|flag| Value::String(flag.to_string().into()))
+            .collect::<Vec<Value>>();
+
+        values.push(Value::Array(flags));
+        values.push(Value::String("passwords".into()));
+
+        let passwords = self
+            .passwords
+            .iter()
+            .map(|pass| Value::String(pass.clone()))
+            .collect::<Vec<Value>>();
+
+        values.push(Value::Array(passwords));
+
+        Value::Array(values)
+    }
 }
 
 impl Default for RedisUser {
@@ -89,4 +113,12 @@ impl Default for RedisUser {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UserFlag {
     NoPass,
+}
+
+impl ToString for UserFlag {
+    fn to_string(&self) -> String {
+        match self {
+            Self::NoPass => "nopas".to_string(),
+        }
+    }
 }

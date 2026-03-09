@@ -1043,7 +1043,37 @@ impl Worker {
                 response.push(Value::Array(valid_entries));
             }
 
-            CommandType::Acl => {}
+            CommandType::Acl => {
+                validate_args_len(request, 1)?;
+                let subcmd = &request.args[0];
+
+                match &subcmd[..] {
+                    b"WHOAMI" => response.push(Value::String("default".into())),
+                    b"GETUSER" => {
+                        validate_args_len(request, 2)?;
+                        let username = &request.args[1];
+                        let user_reader = self.store.user_reader()?;
+                        let Some(user) = user_reader.get(username) else {
+                            todo!();
+                        };
+
+                        response.push(user);
+                    }
+                    b"SETUSER" => {
+                        validate_args_len(request, 3)?;
+                        let username = &request.args[1];
+                        let pass = &request.args[2];
+
+                        assert_eq!(pass[0], '>' as u8);
+                        let pass = Bytes::copy_from_slice(&pass[1..]);
+
+                        let mut user_writer = self.store.user_writer()?;
+                        user_writer.set_password(username, &pass);
+                        response.push(Value::ok());
+                    }
+                    _ => {}
+                }
+            }
 
             CommandType::Auth => {}
         }

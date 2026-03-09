@@ -17,6 +17,7 @@ use queue::TransactionStore;
 use rdb::RdbFile;
 use sorted_set::SortedSetStore;
 use stream::StreamStore;
+use user::UserStore;
 
 use kanal::{AsyncReceiver, AsyncSender};
 
@@ -38,6 +39,7 @@ pub struct GlobalStore {
     config: RwLock<MapStore>,
     pubsub: RwLock<PubSubStore>,
     sorted_set: RwLock<SortedSetStore>,
+    users: RwLock<UserStore>,
 }
 
 impl GlobalStore {
@@ -53,6 +55,7 @@ impl GlobalStore {
             config: RwLock::new(MapStore::new()),
             pubsub: RwLock::new(PubSubStore::new()),
             sorted_set: RwLock::new(SortedSetStore::new()),
+            users: RwLock::new(UserStore::new()),
         }
     }
 
@@ -157,6 +160,14 @@ impl GlobalStore {
 
     pub fn sorted_set_writer(&self) -> Result<RwLockWriteGuard<'_, SortedSetStore>, RedisError> {
         self.sorted_set.write().map_err(|_| RedisError::WriteLock)
+    }
+
+    pub fn user_reader(&self) -> Result<RwLockReadGuard<'_, UserStore>, RedisError> {
+        self.users.read().map_err(|_| RedisError::ReadLock)
+    }
+
+    pub fn user_writer(&self) -> Result<RwLockWriteGuard<'_, UserStore>, RedisError> {
+        self.users.write().map_err(|_| RedisError::WriteLock)
     }
 
     pub fn key_type(&self, key: &Bytes) -> Result<Bytes, RedisError> {
