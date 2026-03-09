@@ -1075,7 +1075,20 @@ impl Worker {
                 }
             }
 
-            CommandType::Auth => {}
+            CommandType::Auth => {
+                validate_args_len(request, 2)?;
+                let username = &request.args[0];
+                let password = &request.args[1];
+
+                let user_reader = self.store.user_reader()?;
+                if !user_reader.authenticate(username, password) {
+                    response.push(Value::Error(
+                        "WRONGPASS invalid username-password pair or user is disabled".into(),
+                    ));
+                } else {
+                    response.push(Value::ok());
+                }
+            }
         }
 
         Ok(response)
