@@ -118,7 +118,7 @@ pub enum UserFlag {
 impl ToString for UserFlag {
     fn to_string(&self) -> String {
         match self {
-            Self::NoPass => "nopas".to_string(),
+            Self::NoPass => "nopass".to_string(),
         }
     }
 }
