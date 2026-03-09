@@ -326,8 +326,8 @@ impl Worker {
         request: &RedisCommand,
         client_id: &Bytes,
     ) -> Result<Option<Vec<Value>>, RedisError> {
-        let user_reader = self.store.user_reader()?;
-        if user_reader.requires_authentication(&"default".into(), client_id) {
+        let mut user_writer = self.store.user_writer()?;
+        if user_writer.requires_authentication(&"default".into(), client_id) {
             let mut response = Vec::new();
             match request.cmd {
                 CommandType::Auth => {
@@ -335,7 +335,6 @@ impl Worker {
                     let username = &request.args[0];
                     let password = &request.args[1];
 
-                    let mut user_writer = self.store.user_writer()?;
                     if !user_writer.authenticate(username, password, client_id) {
                         response.push(Value::Error(
                             "WRONGPASS invalid username-password pair or user is disabled".into(),
